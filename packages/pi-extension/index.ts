@@ -8,7 +8,7 @@
 import type { ExtensionAPI, ExtensionContext } from '@earendil-works/pi-coding-agent'
 import * as cli from './src/cli.ts'
 import { registerTools } from './src/tools.ts'
-import { sandboxExec, cleanupTempKey } from './src/cli.ts'
+import { sandboxExec, cleanupTempKey, autoInstallCLI } from './src/cli.ts'
 import { shortId } from './src/util.ts'
 
 const SESSION_ENTRY = 'createos-session'
@@ -150,7 +150,14 @@ export default function (pi: ExtensionAPI) {
     if (active) return
 
     if (!(await cli.isCreateOSInstalled(pi))) {
-      ctx.ui.notify('CreateOS CLI not found. Install it: https://nodeops.network/createos/docs/CLI/Getting-Started', 'error'); return
+      setStatus(ctx, '☁ createos · installing CLI…')
+      ctx.ui.notify('CreateOS CLI not found — installing automatically…', 'info')
+      if (!(await autoInstallCLI(pi))) {
+        ctx.ui.notify('Failed to auto-install CreateOS CLI. Install manually: curl -sfL https://raw.githubusercontent.com/NodeOps-app/createos-cli/main/install.sh | sh', 'error')
+        setStatus(ctx, undefined)
+        return
+      }
+      ctx.ui.notify('CreateOS CLI installed successfully.', 'info')
     }
     if (!(await cli.isLoggedIn(pi))) {
       ctx.ui.notify('Not logged in. Run: createos login', 'error'); return
