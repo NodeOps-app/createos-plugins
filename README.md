@@ -38,13 +38,12 @@ Heavy builds, flaky test suites, and untrusted code don't belong on your laptop.
 
 The `createos` CLI **auto-installs** on first use. Sign in once with `createos login` (browser OAuth, run it in your own terminal) or `export CREATEOS_API_KEY=<key>`; check with `cos auth`. Prefer a local checkout? See [Install](#install).
 
-## Plugins
+## Packages
 
-| Plugin | What it does |
+| Package | What it does |
 |---|---|
-| [**createos-sandbox**](./createos-sandbox) | Offload, parallel fanout, scratch shell, reusable box with sync, port tunnel, public HTTPS expose, private-network clusters, BYO-S3 disk mounts, WireGuard VPN, and snapshot/fork — all driving the authed `createos` CLI. |
-
-> The marketplace currently ships one plugin; more CreateOS plugins land here as siblings.
+| [**createos-sandbox**](./packages/createos-sandbox) | Hooks-based Claude Code plugin — offload, parallel fanout, scratch shell, reusable box with sync, port tunnel, public HTTPS expose, private-network clusters, BYO-S3 disk mounts, WireGuard VPN, and snapshot/fork — all driving the authed `createos` CLI. |
+| [**pi-extension**](./packages/pi-extension) | Pi extension (TypeScript) — 33 sandbox tools that transparently route Claude Code's built-in commands (bash, read, write, etc.) to a remote CreateOS Sandbox. |
 
 ## Commands at a glance
 
@@ -64,7 +63,7 @@ The `createos` CLI **auto-installs** on first use. Sign in once with `createos l
 | `/createos-sandbox:template …` | build a custom image so boxes boot with the toolchain already installed |
 | `/createos-sandbox:status` | show active box + sync + tunnels + cluster |
 
-Full flags, networking guide, and heavy-build tips live in the [**plugin README**](./createos-sandbox/README.md).
+Full flags, networking guide, and heavy-build tips live in the [**plugin README**](./packages/createos-sandbox/README.md).
 
 ## Install
 
@@ -83,7 +82,7 @@ git clone https://github.com/NodeOps-app/createos-claude-plugins
 
 **Dev (instant, no install):**
 ```bash
-claude --plugin-dir /path/to/createos-claude-plugins/createos-sandbox
+claude --plugin-dir /path/to/createos-claude-plugins/packages/createos-sandbox
 /reload-plugins      # after editing plugin files
 ```
 
@@ -103,24 +102,34 @@ claude --plugin-dir /path/to/createos-claude-plugins/createos-sandbox
 ## Repository layout
 
 ```
-createos/                         # marketplace root
+createos-claude-plugins/              # marketplace root
 ├─ .claude-plugin/
-│  └─ marketplace.json            # marketplace manifest
-└─ createos-sandbox/              # the plugin
-   ├─ .claude-plugin/plugin.json
-   ├─ commands/                   # slash commands
-   ├─ skills/                     # the using-createos-sandbox skill + references/
-   ├─ hooks/                      # SessionStart driver-path + PreToolUse offload-hint
-   ├─ scripts/cos                 # the CLI driver
-   └─ README.md
+│  └─ marketplace.json                # marketplace manifest
+├─ packages/
+│  ├─ createos-sandbox/               # hooks-based Claude plugin
+│  │  ├─ .claude-plugin/plugin.json
+│  │  ├─ commands/                    # slash commands
+│  │  ├─ skills/                      # the using-createos-sandbox skill + references/
+│  │  ├─ hooks/                       # SessionStart driver-path + PreToolUse offload-hint
+│  │  ├─ scripts/cos                  # the CLI driver
+│  │  └─ README.md
+│  └─ pi-extension/                   # Pi extension (TypeScript)
+│     ├─ index.ts                     # extension entry point
+│     ├─ src/                         # tools, CLI wrappers, ops
+│     └─ README.md
+├─ apps/                              # (future starter templates)
+├─ docs/
+│  └─ adr/                            # architecture decision records
+└─ README.md
 ```
 
 ## Contributing
 
-Issues and PRs welcome. The plugin is a thin Claude Code surface over the [`createos`](https://createos.sh) CLI — most command logic lives in [`createos-sandbox/scripts/cos`](./createos-sandbox/scripts/cos). Keep the slash-command, skill, and CLI surfaces aligned.
+Issues and PRs welcome. The plugin is a thin Claude Code surface over the [`createos`](https://createos.sh) CLI — most command logic lives in [`createos-sandbox/scripts/cos`](./packages/createos-sandbox/scripts/cos). Keep the slash-command, skill, and CLI surfaces aligned.
 
 ## Links
 
 - 🌐 [createos.sh](https://createos.sh) — CreateOS platform
 - 📖 [Claude Code plugins](https://docs.claude.com/en/docs/claude-code) — how plugins & marketplaces work
-- 📦 [Plugin README](./createos-sandbox/README.md) — full command & flag reference
+- 📦 [Plugin README](./packages/createos-sandbox/README.md) — full command & flag reference
+- 🔧 [Pi Extension README](./packages/pi-extension/README.md) — Pi extension setup & tool inventory
