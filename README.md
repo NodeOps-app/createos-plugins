@@ -28,6 +28,7 @@ Heavy builds, flaky test suites, and untrusted code don't belong on your laptop.
 
 ## Quick start
 
+**Claude Code:**
 ```bash
 # 1. Add the marketplace + install the plugin
 /plugin marketplace add NodeOps-app/createos-claude-plugins
@@ -35,6 +36,15 @@ Heavy builds, flaky test suites, and untrusted code don't belong on your laptop.
 
 # 2. Offload a heavy test run to a throwaway box (auto-destroys)
 /createos-sandbox:offload . "npm ci && npm test"
+```
+
+**Pi:**
+```bash
+# 1. Install the extension
+pi install npm:@createos/pi
+
+# 2. Start a session with all tools routed to a remote sandbox
+pi --createos
 ```
 
 The `createos` CLI **auto-installs** on first use. Sign in once with `createos login` (browser OAuth, run it in your own terminal) or `export CREATEOS_API_KEY=<key>`; check with `cos auth`. Prefer a local checkout? See [Install](#install).
