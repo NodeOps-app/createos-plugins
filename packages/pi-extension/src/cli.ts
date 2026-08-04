@@ -369,10 +369,23 @@ export async function registerDevice(pi: ExtensionAPI, name?: string): Promise<s
 
 // --- Helpers ---
 
+const CLI_INSTALL_URL = 'https://raw.githubusercontent.com/NodeOps-app/createos-cli/main/install.sh'
+
 export async function isCreateOSInstalled(pi: ExtensionAPI): Promise<boolean> {
   try {
     const res = await pi.exec('createos', ['version'])
     return res.code === 0
+  } catch {
+    return false
+  }
+}
+
+export async function autoInstallCLI(pi: ExtensionAPI): Promise<boolean> {
+  try {
+    const res = await pi.exec('bash', ['-c', `curl -sfL "${CLI_INSTALL_URL}" | sh -`])
+    if (res.code !== 0) return false
+    // Verify it landed on PATH
+    return isCreateOSInstalled(pi)
   } catch {
     return false
   }
