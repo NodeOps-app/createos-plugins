@@ -56,7 +56,7 @@ The `createos` CLI **auto-installs** on first use. Sign in once with `createos l
 | [**claude-code-plugin**](./packages/claude-code-plugin) | Hooks-based Claude Code plugin — offload, parallel fanout, scratch shell, reusable box with sync, port tunnel, public HTTPS expose, private-network clusters, BYO-S3 disk mounts, WireGuard VPN, and snapshot/fork — all driving the authed `createos` CLI. |
 | [**pi-extension**](./packages/pi-extension) | Pi coding agent extension that transparently routes all built-in commands (bash, read, write, edit, ls, find, grep) to a remote CreateOS Sandbox, plus 26 additional tools for sandbox lifecycle, configuration, port tunnels, file sync, private networks, persistent disks, and device VPN — 33 tools total. |
 
-## Commands at a glance
+## Claude Code — commands at a glance
 
 | Command | What |
 |---|---|
@@ -76,16 +76,22 @@ The `createos` CLI **auto-installs** on first use. Sign in once with `createos l
 
 Full flags, networking guide, and heavy-build tips live in the [**Claude Code Plugin README**](./packages/claude-code-plugin/README.md).
 
-## Pi extension
+## Pi — commands at a glance
 
-For [Pi](https://github.com/anthropics/pi) users, the `pi-extension` package provides 33 tools that transparently route all coding operations to a remote CreateOS Sandbox.
+All built-in tools (bash, read, write, edit, ls, find, grep) transparently route to the sandbox — plus 26 additional tools for lifecycle, networking, disks, and device VPN (33 tools total).
 
-### Quick start
-
-```bash
-pi install npm:@createos/pi
-pi --createos
-```
+| Command | What |
+|---------|------|
+| `/sandbox` | Show sandbox status |
+| `/network create <name>` | Create a private network |
+| `/network ls` | List your networks |
+| `/network show <name>` | Show network members + IPs |
+| `/network attach <name>` | Join this sandbox to a network |
+| `/network detach <name>` | Leave a network |
+| `/network rm <name>` | Delete a network |
+| `/device status` | Show registered devices |
+| `/device attach <network>` | Give your machine access to a network |
+| `/device detach <network>` | Remove access |
 
 ### Flags
 
@@ -96,13 +102,7 @@ pi --createos
 | `--rootfs <name>` | Base image or template |
 | `--network <name>` | Network(s) to join at creation |
 
-### In-session commands
-
-| Command | Description |
-|---------|-------------|
-| `/sandbox` | Show sandbox status |
-| `/network <sub>` | Network CRUD (create, ls, show, rm, attach, detach) |
-| `/device <sub>` | Device status, attach, detach |
+Full tool inventory lives in the [**Pi Extension README**](./packages/pi-extension/README.md).
 
 ## Install
 
