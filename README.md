@@ -1,12 +1,13 @@
 <div align="center">
 
-# CreateOS Claude Plugin Marketplace
+# CreateOS Integrations
 
-**A [Claude Code](https://docs.claude.com/en/docs/claude-code) plugin marketplace for disposable sandbox compute.**
+**[Claude Code](https://docs.claude.com/en/docs/claude-code) plugin & [Pi](https://github.com/anthropics/pi) extension for disposable sandbox compute.**
 
-Run ad-hoc, heavy, or untrusted code **off your machine** in disposable [CreateOS](https://createos.sh) Sandboxes — straight from your Claude Code session.
+Run code **off your machine** in disposable [CreateOS](https://createos.sh) Sandboxes — from Claude Code or Pi.
 
 [![Claude Code](https://img.shields.io/badge/Claude%20Code-plugin-6E56CF)](https://docs.claude.com/en/docs/claude-code)
+[![Pi](https://img.shields.io/badge/Pi-extension-F97316)](https://github.com/anthropics/pi)
 [![CreateOS](https://img.shields.io/badge/CreateOS-Sandboxes-0EA5E9)](https://createos.sh)
 [![Spawn](https://img.shields.io/badge/create%20to%20first%20command-~200ms-22C55E)](https://createos.sh)
 [![PRs welcome](https://img.shields.io/badge/PRs-welcome-brightgreen)](#contributing)
