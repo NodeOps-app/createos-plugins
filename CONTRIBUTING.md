@@ -15,7 +15,7 @@ apps in `apps/` are standalone projects.
 1. Fork the repository and create a branch for your change.
 2. Keep each PR scoped to one package or app.
 3. Use [Conventional Commit](https://www.conventionalcommits.org/) style for your PR title
-   (e.g. `feat(pi-extension): add X`, `fix(adk-plugin): handle Y`).
+   (e.g. `feat(opencode): add X`, `fix(pi-extension): handle Y`, `fix(cos): correct Z`).
 4. Run lint, build, and tests for the package you changed before opening the PR.
 5. Open a pull request. A maintainer will review it and, once approved, merge it into `main`.
 

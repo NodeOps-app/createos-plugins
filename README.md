@@ -2,12 +2,13 @@
 
 # CreateOS Integrations
 
-**[Claude Code](https://docs.claude.com/en/docs/claude-code) plugin & [Pi](https://github.com/anthropics/pi) extension for disposable sandbox compute.**
+**[Claude Code](https://docs.claude.com/en/docs/claude-code) plugin, [Pi](https://github.com/anthropics/pi) extension & [OpenCode](https://opencode.ai) plugin for disposable sandbox compute.**
 
-Run code **off your machine** in disposable [CreateOS](https://createos.sh) Sandboxes — from Claude Code or Pi.
+Run code **off your machine** in disposable [CreateOS](https://createos.sh) Sandboxes — from Claude Code, Pi, or OpenCode.
 
 [![Claude Code](https://img.shields.io/badge/Claude%20Code-plugin-6E56CF)](https://docs.claude.com/en/docs/claude-code)
 [![Pi](https://img.shields.io/badge/Pi-extension-F97316)](https://github.com/anthropics/pi)
+[![OpenCode](https://img.shields.io/badge/OpenCode-plugin-0EA5E9)](https://opencode.ai)
 [![CreateOS](https://img.shields.io/badge/CreateOS-Sandboxes-0EA5E9)](https://createos.sh)
 [![Spawn](https://img.shields.io/badge/create%20to%20first%20command-~200ms-22C55E)](https://createos.sh)
 [![PRs welcome](https://img.shields.io/badge/PRs-welcome-brightgreen)](#contributing)
@@ -29,7 +30,6 @@ Heavy builds, flaky test suites, and untrusted code don't belong on your laptop.
 ## Quick start
 
 **Claude Code:**
-
 ```bash
 # 1. Add the marketplace + install the plugin
 /plugin marketplace add NodeOps-app/createos-claude-plugins
@@ -40,7 +40,6 @@ Heavy builds, flaky test suites, and untrusted code don't belong on your laptop.
 ```
 
 **Pi:**
-
 ```bash
 # 1. Install the extension
 pi install npm:@createos/pi
@@ -49,74 +48,96 @@ pi install npm:@createos/pi
 pi --createos
 ```
 
+**OpenCode:**
+```bash
+# 1. Install the plugin
+opencode plugin @createos/opencode --global
+
+# 2. Launch opencode — sandbox tools are available automatically
+opencode
+```
+
 The `createos` CLI **auto-installs** on first use. Sign in once with `createos login` (browser OAuth, run it in your own terminal) or `export CREATEOS_API_KEY=<key>`; check with `cos auth`. Prefer a local checkout? See [Install](#install).
 
 ## Packages
 
-| Package                                                 | What it does                                                                                                                                                                                                                                                                                                   |
-| ------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| [**claude-code-plugin**](./packages/claude-code-plugin) | Hooks-based Claude Code plugin — offload, parallel fanout, scratch shell, reusable box with sync, port tunnel, public HTTPS expose, private-network clusters, BYO-S3 disk mounts, WireGuard VPN, and snapshot/fork — all driving the authed `createos` CLI.                                                    |
-| [**pi-extension**](./packages/pi-extension)             | Pi coding agent extension that transparently routes all built-in commands (bash, read, write, edit, ls, find, grep) to a remote CreateOS Sandbox, plus 26 additional tools for sandbox lifecycle, configuration, port tunnels, file sync, private networks, persistent disks, and device VPN — 33 tools total. |
+| Package | What it does |
+|---|---|
+| [**claude-code-plugin**](./packages/claude-code-plugin) | Hooks-based Claude Code plugin — offload, parallel fanout, scratch shell, reusable box with sync, port tunnel, public HTTPS expose, private-network clusters, BYO-S3 disk mounts, WireGuard VPN, and snapshot/fork — all driving the authed `createos` CLI. |
+| [**pi-extension**](./packages/pi-extension) | Pi coding agent extension that transparently routes all built-in commands (bash, read, write, edit, ls, find, grep) to a remote CreateOS Sandbox, plus 40 additional tools for sandbox lifecycle, configuration, port tunnels, file sync, private networks, persistent disks, custom image templates, remote editors, and device VPN — 47 tools total. |
+| [**@createos/opencode**](./packages/opencode-plugin) | OpenCode plugin with 40 sandbox tools (`sandbox_exec`, `sandbox_push`, `sandbox_pull`, networks, disks, VPN, sync) and system prompt injection for sandbox-first workflows. |
 
 ## Claude Code — commands at a glance
 
-| Command                                          | What                                                                    |
-| ------------------------------------------------ | ----------------------------------------------------------------------- |
-| `/createos-sandbox:offload <dir> <cmd>`          | one-shot: stage → run → pull artifacts → destroy                        |
-| `/createos-sandbox:fanout <dir> <cmd1> [cmd2 …]` | run each command in its own throwaway box, in parallel                  |
-| `/createos-sandbox:shell`                        | instant throwaway interactive Linux (destroyed on exit)                 |
-| `/createos-sandbox:up` · `run` · `sync` · `down` | reusable per-repo box + file sync for live dev loops                    |
-| `/createos-sandbox:tunnel <port>`                | forward a box port to `127.0.0.1` (private)                             |
-| `/createos-sandbox:expose <port>`                | public HTTPS URL for a box port                                         |
-| `/createos-sandbox:cluster …`                    | N boxes on one private network, name-addressable                        |
-| `/createos-sandbox:disk …`                       | mount your own S3 bucket into the project box                           |
-| `/createos-sandbox:vpn …`                        | WireGuard L3 into your private networks                                 |
-| `/createos-sandbox:fork`                         | snapshot the project box → independent clone                            |
-| `/createos-sandbox:pause` · `resume`             | park the warm box at zero compute cost, then restore it exactly         |
-| `/createos-sandbox:template …`                   | build a custom image so boxes boot with the toolchain already installed |
-| `/createos-sandbox:status`                       | show active box + sync + tunnels + cluster                              |
+| Command | What |
+|---|---|
+| `/createos-sandbox:offload <dir> <cmd>` | one-shot: stage → run → pull artifacts → destroy |
+| `/createos-sandbox:fanout <dir> <cmd1> [cmd2 …]` | run each command in its own throwaway box, in parallel |
+| `/createos-sandbox:shell` | instant throwaway interactive Linux (destroyed on exit) |
+| `/createos-sandbox:up` · `run` · `sync` · `down` | reusable per-repo box + file sync for live dev loops |
+| `/createos-sandbox:tunnel <port>` | forward a box port to `127.0.0.1` (private) |
+| `/createos-sandbox:expose <port>` | public HTTPS URL for a box port |
+| `/createos-sandbox:cluster …` | N boxes on one private network, name-addressable |
+| `/createos-sandbox:disk …` | mount your own S3 bucket into the project box |
+| `/createos-sandbox:vpn …` | WireGuard L3 into your private networks |
+| `/createos-sandbox:fork` | snapshot the project box → independent clone |
+| `/createos-sandbox:pause` · `resume` | park the warm box at zero compute cost, then restore it exactly |
+| `/createos-sandbox:template …` | build a custom image so boxes boot with the toolchain already installed |
+| `/createos-sandbox:status` | show active box + sync + tunnels + cluster |
 
 Full flags, networking guide, and heavy-build tips live in the [**Claude Code Plugin README**](./packages/claude-code-plugin/README.md).
 
 ## Pi — commands at a glance
 
-All built-in tools (bash, read, write, edit, ls, find, grep) transparently route to the sandbox — plus 26 additional tools for lifecycle, networking, disks, and device VPN (33 tools total).
+All built-in tools (bash, read, write, edit, ls, find, grep) transparently route to the sandbox — plus 40 additional tools for lifecycle, networking, disks, image templates, remote editors, and device VPN (47 tools total).
 
-| Command                    | What                                  |
-| -------------------------- | ------------------------------------- |
-| `/sandbox`                 | Show sandbox status                   |
-| `/network create <name>`   | Create a private network              |
-| `/network ls`              | List your networks                    |
-| `/network show <name>`     | Show network members + IPs            |
-| `/network attach <name>`   | Join this sandbox to a network        |
-| `/network detach <name>`   | Leave a network                       |
-| `/network rm <name>`       | Delete a network                      |
-| `/device status`           | Show registered devices               |
+| Command | What |
+|---------|------|
+| `/sandbox` | Show sandbox status |
+| `/network create <name>` | Create a private network |
+| `/network ls` | List your networks |
+| `/network show <name>` | Show network members + IPs |
+| `/network attach <name>` | Join this sandbox to a network |
+| `/network detach <name>` | Leave a network |
+| `/network rm <name>` | Delete a network |
+| `/device status` | Show registered devices |
 | `/device attach <network>` | Give your machine access to a network |
-| `/device detach <network>` | Remove access                         |
+| `/device detach <network>` | Remove access |
 
 ### Flags
 
-| Flag               | Purpose                               |
-| ------------------ | ------------------------------------- |
-| `--createos`       | Activate the extension                |
-| `--shape <shape>`  | Sandbox size (default: `s-2vcpu-2gb`) |
-| `--rootfs <name>`  | Base image or template                |
-| `--network <name>` | Network(s) to join at creation        |
+| Flag | Purpose |
+|------|---------|
+| `--createos` | Activate the extension |
+| `--shape <shape>` | Sandbox size (default: `s-2vcpu-2gb`) |
+| `--rootfs <name>` | Base image or template |
+| `--network <name>` | Network(s) to join at creation |
 
 Full tool inventory lives in the [**Pi Extension README**](./packages/pi-extension/README.md).
+
+## OpenCode — tools at a glance (40)
+
+| Category | Tools |
+|---|---|
+| **Execute & Files** | `sandbox_exec`, `sandbox_pull`, `sandbox_push` |
+| **Lifecycle** | `sandbox_create`, `sandbox_list`, `sandbox_info`, `sandbox_pause`, `sandbox_resume`, `sandbox_fork`, `sandbox_destroy` |
+| **Config** | `sandbox_ingress`, `sandbox_firewall`, `sandbox_bandwidth`, `sandbox_shapes`, `sandbox_images` |
+| **Ports & Sync** | `sandbox_preview_url`, `sandbox_tunnel`, `sandbox_sync` |
+| **Networks** | `sandbox_network_create/list/show/attach/detach/delete` |
+| **Disks** | `sandbox_disk_create/list/show/delete/attach/detach` |
+| **Device VPN** | `sandbox_device_register/status/attach/detach`, `sandbox_vpn_up` |
+
+Full reference in [opencode-plugin/README.md](./packages/opencode-plugin/README.md).
 
 ## Install
 
 **From GitHub (recommended):**
-
 ```
 /plugin marketplace add NodeOps-app/createos-claude-plugins
 /plugin install claude-code-plugin@createos
 ```
 
 **From a local checkout:**
-
 ```
 git clone https://github.com/NodeOps-app/createos-claude-plugins
 /plugin marketplace add /path/to/createos-claude-plugins
@@ -124,7 +145,6 @@ git clone https://github.com/NodeOps-app/createos-claude-plugins
 ```
 
 **Dev (instant, no install):**
-
 ```bash
 claude --plugin-dir /path/to/createos-claude-plugins/packages/claude-code-plugin
 /reload-plugins      # after editing plugin files
@@ -157,9 +177,15 @@ createos-claude-plugins/              # marketplace root
 │  │  ├─ hooks/                       # SessionStart driver-path + PreToolUse offload-hint
 │  │  ├─ scripts/cos                  # the CLI driver
 │  │  └─ README.md
-│  └─ pi-extension/                   # Pi extension (TypeScript)
-│     ├─ index.ts                     # extension entry point
-│     ├─ src/                         # tools, CLI wrappers, ops
+│  ├─ pi-extension/                   # Pi extension (TypeScript)
+│  │  ├─ index.ts                     # extension entry point
+│  │  ├─ src/                         # tools, CLI wrappers, ops
+│  │  └─ README.md
+│  └─ opencode-plugin/               # OpenCode plugin
+│     ├─ index.ts                     # plugin entry (CreateOSPlugin)
+│     ├─ src/cli.ts                   # createos CLI wrappers
+│     ├─ src/tools.ts                 # 40 tool definitions
+│     ├─ src/util.ts                  # shellQuote, shortId, joinPath
 │     └─ README.md
 ├─ apps/                              # (future starter templates)
 ├─ docs/
@@ -169,11 +195,13 @@ createos-claude-plugins/              # marketplace root
 
 ## Contributing
 
-Issues and PRs welcome. The plugin is a thin Claude Code surface over the [`createos`](https://createos.sh) CLI — most command logic lives in [`claude-code-plugin/scripts/cos`](./packages/claude-code-plugin/scripts/cos). Keep the slash-command, skill, and CLI surfaces aligned.
+Issues and PRs welcome. All three plugins are thin surfaces over the [`createos`](https://createos.sh) CLI — keep the command surfaces aligned.
 
 ## Links
 
-- 🌐 [createos.sh](https://createos.sh) — CreateOS platform
-- 📖 [Claude Code plugins](https://docs.claude.com/en/docs/claude-code) — how plugins & marketplaces work
-- 📦 [Claude Code Plugin README](./packages/claude-code-plugin/README.md) — full command & flag reference
-- 🔧 [Pi Extension README](./packages/pi-extension/README.md) — Pi extension setup & tool inventory
+- [createos.sh](https://createos.sh) — CreateOS platform
+- [Claude Code plugins](https://docs.claude.com/en/docs/claude-code) — how plugins & marketplaces work
+- [OpenCode plugins](https://opencode.ai/docs/plugins/) — OpenCode plugin docs
+- [Claude Code plugin README](./packages/claude-code-plugin/README.md)
+- [Pi extension README](./packages/pi-extension/README.md)
+- [OpenCode plugin README](./packages/opencode-plugin/README.md)
