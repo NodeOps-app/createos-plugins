@@ -33,7 +33,7 @@ Heavy builds, flaky test suites, and untrusted code don't belong on your laptop.
 ```bash
 # 1. Add the marketplace + install the plugin
 /plugin marketplace add NodeOps-app/createos-claude-plugins
-/plugin install claude-code-plugin@createos
+/plugin install @createos/claude-code@createos
 
 # 2. Offload a heavy test run to a throwaway box (auto-destroys)
 /createos-sandbox:offload . "npm ci && npm test"
@@ -134,14 +134,14 @@ Full reference in [opencode-plugin/README.md](./packages/opencode-plugin/README.
 **From GitHub (recommended):**
 ```
 /plugin marketplace add NodeOps-app/createos-claude-plugins
-/plugin install claude-code-plugin@createos
+/plugin install @createos/claude-code@createos
 ```
 
 **From a local checkout:**
 ```
 git clone https://github.com/NodeOps-app/createos-claude-plugins
 /plugin marketplace add /path/to/createos-claude-plugins
-/plugin install claude-code-plugin@createos
+/plugin install @createos/claude-code@createos
 ```
 
 **Dev (instant, no install):**
