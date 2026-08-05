@@ -1,2 +1,4 @@
 packages/opencode-plugin/node_modules/
 packages/opencode-plugin/bun.lock
+package.json
+package-lock.json

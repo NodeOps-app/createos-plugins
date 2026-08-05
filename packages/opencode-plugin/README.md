@@ -49,7 +49,7 @@ cd packages/opencode-plugin && bun install
 
 ## How it works
 
-1. Plugin loads and registers 40 `sandbox_*` tools
+1. Plugin loads and registers 33 `sandbox_*` tools
 2. System prompt is injected into all agents telling them to use `sandbox_exec`
    for all shell commands instead of the built-in `bash` tool
 3. On first tool call, a sandbox is created automatically
@@ -66,7 +66,7 @@ Environment variables:
 | `CREATEOS_SHAPE` | `s-2vcpu-2gb` | Sandbox VM size |
 | `CREATEOS_ROOTFS` | `devbox:1` | Base image for the sandbox |
 
-## Tool inventory (40 tools)
+## Tool inventory (33 tools)
 
 ### Execute & Files
 
@@ -163,7 +163,7 @@ packages/opencode-plugin/
 ├── tsconfig.json
 └── src/
     ├── cli.ts         # All createos CLI wrappers (execSync-based)
-    ├── tools.ts       # 40 tool definitions using tool() + tool.schema.*
+    ├── tools.ts       # 33 tool definitions using tool() + tool.schema.*
     └── util.ts        # shellQuote, shortId, joinPath
 ```
 
