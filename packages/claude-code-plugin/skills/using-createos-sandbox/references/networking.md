@@ -12,12 +12,12 @@ Read this when something needs to talk to a sandbox: a browser, a teammate, anot
 
 ## Choosing between tunnel, expose, cluster, and VPN
 
-| Need | Reach for |
-|---|---|
-| Hit a box-side dev server from this machine's browser | `tunnel` |
-| Give a teammate a link, or point a webhook at the box | `expose` |
+| Need                                                                              | Reach for |
+| --------------------------------------------------------------------------------- | --------- |
+| Hit a box-side dev server from this machine's browser                             | `tunnel`  |
+| Give a teammate a link, or point a webhook at the box                             | `expose`  |
 | Boxes that need to talk to each other (replication, p2p, load generator → target) | `cluster` |
-| The laptop needs the whole private network, not one port | `vpn` |
+| The laptop needs the whole private network, not one port                          | `vpn`     |
 
 `tunnel` and `expose` operate on the project box, so `cos up` first. `cluster` manages its own set of boxes. `cos down` tears down tunnels, the public URL, and the cluster along with the project box.
 

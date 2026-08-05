@@ -67,14 +67,14 @@ CreateOS Sandbox               ← your code runs here, then the box is destroye
 
 The plugin is a **thin Claude-facing surface** over the `createos` CLI. It ships four things:
 
-| Piece | Path | Role |
-|---|---|---|
-| **Slash commands** | `commands/*.md` | 18 commands (`offload`, `fanout`, `shell`, …), each a thin wrapper that calls `scripts/cos` |
-| **Skill** | `skills/using-createos-sandbox/SKILL.md` + `references/` | teaches Claude *when* to reach for the sandbox on its own, with depth loaded on demand |
-| **Hooks** | `hooks/hooks.json` + `scripts/` | `SessionStart` publishes the driver's absolute path; `PreToolUse(Bash)` nudges on heavy build/test commands |
-| **Driver** | `scripts/cos` | the actual logic — staging, egress, keepalive, sync, networking, lifecycle, state |
+| Piece              | Path                                                     | Role                                                                                                        |
+| ------------------ | -------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------- |
+| **Slash commands** | `commands/*.md`                                          | 18 commands (`offload`, `fanout`, `shell`, …), each a thin wrapper that calls `scripts/cos`                 |
+| **Skill**          | `skills/using-createos-sandbox/SKILL.md` + `references/` | teaches Claude _when_ to reach for the sandbox on its own, with depth loaded on demand                      |
+| **Hooks**          | `hooks/hooks.json` + `scripts/`                          | `SessionStart` publishes the driver's absolute path; `PreToolUse(Bash)` nudges on heavy build/test commands |
+| **Driver**         | `scripts/cos`                                            | the actual logic — staging, egress, keepalive, sync, networking, lifecycle, state                           |
 
-Slash commands invoke `${CLAUDE_PLUGIN_ROOT}/scripts/cos`, which Claude Code expands when the command is loaded. **The Bash tool's own environment does not carry that variable**, so when the *skill* decides to offload on its own it needs a real path — that is what the `SessionStart` hook supplies. Without it the path collapses to `/scripts/cos`, and the observed failure mode is Claude quietly rebuilding the offload out of raw CLI primitives, losing egress restriction, keepalive, auto-destroy, and the auth preflight along the way. See [ADR-0001](../docs/adr/0001-cos-bash-driver.md).
+Slash commands invoke `${CLAUDE_PLUGIN_ROOT}/scripts/cos`, which Claude Code expands when the command is loaded. **The Bash tool's own environment does not carry that variable**, so when the _skill_ decides to offload on its own it needs a real path — that is what the `SessionStart` hook supplies. Without it the path collapses to `/scripts/cos`, and the observed failure mode is Claude quietly rebuilding the offload out of raw CLI primitives, losing egress restriction, keepalive, auto-destroy, and the auth preflight along the way. See [ADR-0001](../docs/adr/0001-cos-bash-driver.md).
 
 ## Two patterns
 
@@ -87,12 +87,14 @@ A reusable per-repo box + one-way file sync (default; `-2` for two-way). A dev s
 ## Install
 
 **From the marketplace (recommended):**
+
 ```
 /plugin marketplace add NodeOps-app/createos-claude-plugins
 /plugin install createos-sandbox@createos
 ```
 
 **Dev (instant, no install):**
+
 ```bash
 claude --plugin-dir /path/to/createos-claude-plugins/createos-sandbox
 /reload-plugins      # after editing plugin files
@@ -119,25 +121,25 @@ claude --plugin-dir /path/to/createos-claude-plugins/createos-sandbox
 
 ## Command reference
 
-| Command | Summary |
-|---|---|
-| [`offload`](#offload--one-shot) `[flags] <dir> <cmd>` | one-shot: stage → run (keepalive) → pull → destroy |
-| [`fanout`](#fanout--parallel-boxes) `[-j N] [flags] <dir> <cmd1> [cmd2] …` | run each command in its own throwaway box, in parallel |
-| [`shell`](#shell--throwaway-linux) `[-s] [-r] [-e\|-p\|-E]` | instant throwaway interactive Linux (destroyed on exit) |
-| [`up`](#project-box--live-sessions) `[-s] [-r] [-n] [-e\|-p\|-E]` | create/reuse the per-repo project box |
-| [`run`](#project-box--live-sessions) `<cmd>` | exec in the project box (streamed, state persists) |
-| [`sync`](#project-box--live-sessions) `[-2\|-M] [-x glob] <local-dir> [remote-dir]` | file sync into the project box (background) |
-| [`tunnel`](#networking) `<remote> [local]` | forward a box port to `127.0.0.1` (private) |
-| [`expose`](#networking) `<port>` | public HTTPS URL for a box port |
-| [`unexpose`](#networking) | revoke the public URL / disable ingress |
-| [`cluster`](#networking) `up <N> \| run […] <cmd> \| ls \| down` | N boxes on one private network, name-addressable |
-| [`disk`](#disks--byo-s3) `create \| ls \| show \| attach \| detach \| rm` | BYO S3 bucket mounts on the project box |
-| [`vpn`](#networking) `[register <name> \| up]` | WireGuard L3 into your private networks |
-| [`fork`](#networking) | snapshot the project box → independent clone |
-| [`pause`](#pause-resume-and-custom-images) · [`resume`](#pause-resume-and-custom-images) | park the warm project box at zero compute cost / restore it exactly |
-| [`template`](#pause-resume-and-custom-images) `submit <name> [-f Dockerfile] \| ls \| show \| logs \| rm` | build a custom rootfs so boxes boot pre-provisioned |
-| [`down`](#project-box--live-sessions) | stop sync/tunnels + destroy the project box (+ cluster) |
-| [`status`](#project-box--live-sessions) | show active box + sync + tunnels + cluster |
+| Command                                                                                                   | Summary                                                             |
+| --------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------- |
+| [`offload`](#offload--one-shot) `[flags] <dir> <cmd>`                                                     | one-shot: stage → run (keepalive) → pull → destroy                  |
+| [`fanout`](#fanout--parallel-boxes) `[-j N] [flags] <dir> <cmd1> [cmd2] …`                                | run each command in its own throwaway box, in parallel              |
+| [`shell`](#shell--throwaway-linux) `[-s] [-r] [-e\|-p\|-E]`                                               | instant throwaway interactive Linux (destroyed on exit)             |
+| [`up`](#project-box--live-sessions) `[-s] [-r] [-n] [-e\|-p\|-E]`                                         | create/reuse the per-repo project box                               |
+| [`run`](#project-box--live-sessions) `<cmd>`                                                              | exec in the project box (streamed, state persists)                  |
+| [`sync`](#project-box--live-sessions) `[-2\|-M] [-x glob] <local-dir> [remote-dir]`                       | file sync into the project box (background)                         |
+| [`tunnel`](#networking) `<remote> [local]`                                                                | forward a box port to `127.0.0.1` (private)                         |
+| [`expose`](#networking) `<port>`                                                                          | public HTTPS URL for a box port                                     |
+| [`unexpose`](#networking)                                                                                 | revoke the public URL / disable ingress                             |
+| [`cluster`](#networking) `up <N> \| run […] <cmd> \| ls \| down`                                          | N boxes on one private network, name-addressable                    |
+| [`disk`](#disks--byo-s3) `create \| ls \| show \| attach \| detach \| rm`                                 | BYO S3 bucket mounts on the project box                             |
+| [`vpn`](#networking) `[register <name> \| up]`                                                            | WireGuard L3 into your private networks                             |
+| [`fork`](#networking)                                                                                     | snapshot the project box → independent clone                        |
+| [`pause`](#pause-resume-and-custom-images) · [`resume`](#pause-resume-and-custom-images)                  | park the warm project box at zero compute cost / restore it exactly |
+| [`template`](#pause-resume-and-custom-images) `submit <name> [-f Dockerfile] \| ls \| show \| logs \| rm` | build a custom rootfs so boxes boot pre-provisioned                 |
+| [`down`](#project-box--live-sessions)                                                                     | stop sync/tunnels + destroy the project box (+ cluster)             |
+| [`status`](#project-box--live-sessions)                                                                   | show active box + sync + tunnels + cluster                          |
 
 > **Flag order:** flags (`-s/-r/-e/-p/-E/-o/-x/-w/-K`) come **before** the positional `<dir> <cmd>`.
 
@@ -149,17 +151,17 @@ The core command. Stages a directory into a fresh box, runs a command, optionall
 /createos-sandbox:offload [-p preset] [-e dom] [-E] [-x glob] [-o out] [-w GB] [-K] [-s shape] [-r rootfs] <dir> <cmd>
 ```
 
-| Flag | Meaning |
-|---|---|
-| `-s <shape>` | box size (default `s-1vcpu-1gb`; see [Shapes](#shapes)) |
-| `-r <rootfs>` | root filesystem image (default `devbox:1`) |
-| `-o <out>` | tar a box-side dir and pull it back to local |
-| `-w <GB>` | attempt swap (see caveat under [Heavy builds](#heavy-builds)) |
-| `-K` | keep the box on a real failure so you can inspect it |
-| `-e <domain>` | allow one egress domain (repeatable) |
+| Flag          | Meaning                                                                                     |
+| ------------- | ------------------------------------------------------------------------------------------- |
+| `-s <shape>`  | box size (default `s-1vcpu-1gb`; see [Shapes](#shapes))                                     |
+| `-r <rootfs>` | root filesystem image (default `devbox:1`)                                                  |
+| `-o <out>`    | tar a box-side dir and pull it back to local                                                |
+| `-w <GB>`     | attempt swap (see caveat under [Heavy builds](#heavy-builds))                               |
+| `-K`          | keep the box on a real failure so you can inspect it                                        |
+| `-e <domain>` | allow one egress domain (repeatable)                                                        |
 | `-p <preset>` | egress preset — `python-uv \| rust-cargo \| npm \| github` (repeatable, composes with `-e`) |
-| `-E` | unrestricted egress (trusted offload) |
-| `-x <glob>` | extra upload exclude (repeatable) |
+| `-E`          | unrestricted egress (trusted offload)                                                       |
+| `-x <glob>`   | extra upload exclude (repeatable)                                                           |
 
 ```bash
 # Run a test suite, pull nothing, box auto-destroys
@@ -210,7 +212,7 @@ A **reusable, per-repo** box addressed by your working directory. `up` creates i
 
 - **`up`** is idempotent — run it again on the same repo and it reuses the same box instead of creating a new one.
 - **`run`** streams output and keeps box-side state between calls (installed deps, running processes).
-- **`sync`** is **one-way by default** (laptop → box). `-2` = two-way (box writes flow back), `-M` = mirror (deletes box-side extras), `-x <glob>` = exclude. First run downloads Mutagen (~60–90 s before edits propagate). **Install deps *inside* the box** (`cos run 'npm ci'`) rather than syncing `node_modules` up — big/regenerable dirs are excluded by default.
+- **`sync`** is **one-way by default** (laptop → box). `-2` = two-way (box writes flow back), `-M` = mirror (deletes box-side extras), `-x <glob>` = exclude. First run downloads Mutagen (~60–90 s before edits propagate). **Install deps _inside_ the box** (`cos run 'npm ci'`) rather than syncing `node_modules` up — big/regenerable dirs are excluded by default.
 - **`pause`/`resume`** park the box at zero compute cost and bring it back exactly — see [Pause, resume, and custom images](#pause-resume-and-custom-images). Prefer `pause` over `down` when the box has a warm toolchain you'll want again.
 - **`down`** stops sync + tunnels and **destroys** the project box (and any cluster). The next session starts from scratch.
 - **`status`** shows the active box + sync + tunnels + cluster.
@@ -225,14 +227,14 @@ A **reusable, per-repo** box addressed by your working directory. `up` creates i
 
 ### Networking
 
-| Command | What it gives you |
-|---|---|
-| **`tunnel <remote> [local]`** | Reach a box-side service on your laptop. Run a dev server in the box, then `tunnel 3000` → `http://127.0.0.1:3000`. Private, background, no public URL. Stopped by `down`. |
-| **`expose <port>`** | A **public HTTPS** link for a port — `<id>-<port>.app.sb.createos.sh`, stable for the box's lifetime. The service must bind `0.0.0.0`. **Anyone with the link can reach it.** Revoke with `unexpose`. |
-| **`unexpose`** | Revoke the public URL / disable ingress on the active box. |
-| **`cluster up <N>`** | N boxes on one private network, reaching each other by **fully-qualified** name (`curl http://cos-cl-<key>-2.fc.local:8080` — the bare short name is NXDOMAIN). `cluster run -a '<cmd>'` fans a command across all; `cluster run <name\|idx> '<cmd>'` targets one. `cluster ls` / `cluster down` manage them. For distributed-system / DB-replication / p2p / load-test repros. **Counts against quota — keep N small.** |
-| **`vpn register <name>`** then **`vpn up`** | Join your laptop to the whole private network over WireGuard (reach every sandbox by name/IP). `vpn up` needs `wg-quick` + `sudo` and **blocks until Ctrl-C** — run it in your own terminal (`!cos vpn up`). |
-| **`fork`** | Snapshot the warm project box → an independent clone for matrix/parallel experiments. The fork is self-managed. |
+| Command                                     | What it gives you                                                                                                                                                                                                                                                                                                                                                                                                        |
+| ------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| **`tunnel <remote> [local]`**               | Reach a box-side service on your laptop. Run a dev server in the box, then `tunnel 3000` → `http://127.0.0.1:3000`. Private, background, no public URL. Stopped by `down`.                                                                                                                                                                                                                                               |
+| **`expose <port>`**                         | A **public HTTPS** link for a port — `<id>-<port>.app.sb.createos.sh`, stable for the box's lifetime. The service must bind `0.0.0.0`. **Anyone with the link can reach it.** Revoke with `unexpose`.                                                                                                                                                                                                                    |
+| **`unexpose`**                              | Revoke the public URL / disable ingress on the active box.                                                                                                                                                                                                                                                                                                                                                               |
+| **`cluster up <N>`**                        | N boxes on one private network, reaching each other by **fully-qualified** name (`curl http://cos-cl-<key>-2.fc.local:8080` — the bare short name is NXDOMAIN). `cluster run -a '<cmd>'` fans a command across all; `cluster run <name\|idx> '<cmd>'` targets one. `cluster ls` / `cluster down` manage them. For distributed-system / DB-replication / p2p / load-test repros. **Counts against quota — keep N small.** |
+| **`vpn register <name>`** then **`vpn up`** | Join your laptop to the whole private network over WireGuard (reach every sandbox by name/IP). `vpn up` needs `wg-quick` + `sudo` and **blocks until Ctrl-C** — run it in your own terminal (`!cos vpn up`).                                                                                                                                                                                                             |
+| **`fork`**                                  | Snapshot the warm project box → an independent clone for matrix/parallel experiments. The fork is self-managed.                                                                                                                                                                                                                                                                                                          |
 
 ### Pause, resume, and custom images
 
@@ -281,14 +283,15 @@ Mount **your own** S3 bucket into the project box.
 - `-p <preset>` — a curated bundle of the registries + CDNs a build actually reaches (repeatable, composes with `-e`).
 - `-E` — force explicitly unrestricted (silences the warning for trusted offloads).
 
-| Preset | Hosts allowed |
-|---|---|
-| `python-uv` | `astral.sh`, `releases.astral.sh`, `pypi.org`, `files.pythonhosted.org` |
-| `rust-cargo` | `crates.io`, `static.crates.io`, `index.crates.io`, `static.rust-lang.org`, `cdn.pyke.io` |
-| `npm` | `registry.npmjs.org` |
-| `github` | `github.com`, `objects.githubusercontent.com`, `raw.githubusercontent.com`, `codeload.github.com` |
+| Preset       | Hosts allowed                                                                                     |
+| ------------ | ------------------------------------------------------------------------------------------------- |
+| `python-uv`  | `astral.sh`, `releases.astral.sh`, `pypi.org`, `files.pythonhosted.org`                           |
+| `rust-cargo` | `crates.io`, `static.crates.io`, `index.crates.io`, `static.rust-lang.org`, `cdn.pyke.io`         |
+| `npm`        | `registry.npmjs.org`                                                                              |
+| `github`     | `github.com`, `objects.githubusercontent.com`, `raw.githubusercontent.com`, `codeload.github.com` |
 
 > `cdn.pyke.io` is included in `rust-cargo` because `ort-sys` (ONNX Runtime) fetches from it. Compose presets and add stragglers with `-e <host>`:
+>
 > ```bash
 > /createos-sandbox:offload -p python-uv -p rust-cargo -e cdn.example.com . "…"
 > ```
@@ -305,7 +308,7 @@ So a domain allowlist is the right control for "this build should only reach pyp
 - **Egress:** default unrestricted; use `-p`/`-e` to lock it down (see above).
 - **Keepalive:** long/quiet compiles run detached with a heartbeat and survive stream drops. `-K` keeps the box on a real failure for inspection.
 - **Excludes:** `.git`/`target`/`node_modules`/`__pycache__`/`.venv`/media are excluded from the upload by default; `-x <glob>` adds more.
-- **Swap caveat:** `-w <GB>` *attempts* swap, but `devbox:1` can't `swapon` today — so a torch/maturin build on a small box may OOM/ENOSPC. Install only the extra/group you need (e.g. `uv sync --group dev`) rather than `--all-extras`.
+- **Swap caveat:** `-w <GB>` _attempts_ swap, but `devbox:1` can't `swapon` today — so a torch/maturin build on a small box may OOM/ENOSPC. Install only the extra/group you need (e.g. `uv sync --group dev`) rather than `--all-extras`.
 - **Shape rejection:** a shape your account can't use fails with a clean `Allowed: [...]` list — pick from it.
 - **Bandwidth:** each box starts with a fixed allowance for traffic it initiates (5 GiB by default). A large model download or `docker pull` can exhaust it, after which outbound traffic stops. Top it up additively via `createos sandbox edit <id>`; the exec, file-transfer, and tunnel channels stay reachable regardless.
 
@@ -328,14 +331,14 @@ Add more with `-x <glob>` (repeatable). Install dependencies **inside** the box 
 
 ## The skill
 
-`using-createos-sandbox` teaches Claude *when* to offload — untrusted code, heavy builds/tests, parallel/matrix work, clean-room repros, live dev loops — so it reaches for the sandbox on its own instead of grinding on your laptop. It drives the same `scripts/cos` helper the slash commands use.
+`using-createos-sandbox` teaches Claude _when_ to offload — untrusted code, heavy builds/tests, parallel/matrix work, clean-room repros, live dev loops — so it reaches for the sandbox on its own instead of grinding on your laptop. It drives the same `scripts/cos` helper the slash commands use.
 
 `SKILL.md` stays a decision surface; the depth lives in `skills/using-createos-sandbox/references/` and is loaded only when a task needs it:
 
-| Reference | Covers |
-|---|---|
-| `offload-and-egress.md` | offload flag table, egress presets and enforcement caveats, fanout, upload excludes, heavy-build OOM/disk/bandwidth traps |
-| `networking.md` | choosing between tunnel/expose/cluster/vpn, cluster DNS names, expose gotchas, WireGuard setup |
+| Reference                 | Covers                                                                                                                                                                     |
+| ------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `offload-and-egress.md`   | offload flag table, egress presets and enforcement caveats, fanout, upload excludes, heavy-build OOM/disk/bandwidth traps                                                  |
+| `networking.md`           | choosing between tunnel/expose/cluster/vpn, cluster DNS names, expose gotchas, WireGuard setup                                                                             |
 | `lifecycle-and-images.md` | pause/resume, auto-pause tuning, fork caveats, built-in rootfs vs custom templates, env vars, remote editor, self-terminating jobs, single-file transfer, measured timings |
 
 ## Hooks
@@ -371,19 +374,19 @@ cos down                                             # stops sync/tunnels, destr
 - **One-way by default.** `sync` and offload uploads are laptop → box; box-side writes never touch local unless you opt into `-2` (two-way) or pull with `offload -o`. Use `-2` deliberately — never casually on a repo root. `-M` (mirror) additionally **deletes** box-side extras.
 - **Scoped statefile.** `cos` only ever touches boxes it created (`cos-*`) or the project box recorded in its statefile. Your other sandboxes are never touched. State lives at `${COS_STATE_DIR:-${XDG_CACHE_HOME:-~/.cache}/createos-sandbox}/<project>.json` (plus a `.tunnels` sidecar).
 - **Quota.** External keys have been observed to allow 2 boxes running at once, with a daily creation cap. Neither is published policy — treat them as observed behaviour, budget `cluster`/`fanout` against them, and expect excess jobs to queue rather than fail.
-- **Ending a session.** `pause` keeps the box (and its warm state) at zero compute cost; `down` destroys it. Either is fine — leaving a box *running* is not.
+- **Ending a session.** `pause` keeps the box (and its warm state) at zero compute cost; `down` destroys it. Either is fine — leaving a box _running_ is not.
 - **Untrusted code.** Restrict egress (`-p`/`-e`) so a malicious dependency can't exfiltrate or phone home.
 
 ## Environment variables
 
-| Variable | Effect |
-|---|---|
-| `CREATEOS_API_KEY` | sign in without browser login (CI / headless / devcontainers); verify with `cos auth` |
-| `COS_NO_AUTOINSTALL=1` | don't auto-install the `createos` CLI |
-| `COS_CLI_INSTALL_URL` | override the CLI install-script source |
-| `COS_CLI` | use a specific `createos` binary instead of the one on `PATH` |
-| `COS_STATE_DIR` | override the statefile directory (default `${XDG_CACHE_HOME:-~/.cache}/createos-sandbox`) |
-| `COS_NO_HINT=1` | silence the auto-suggest hook |
+| Variable               | Effect                                                                                    |
+| ---------------------- | ----------------------------------------------------------------------------------------- |
+| `CREATEOS_API_KEY`     | sign in without browser login (CI / headless / devcontainers); verify with `cos auth`     |
+| `COS_NO_AUTOINSTALL=1` | don't auto-install the `createos` CLI                                                     |
+| `COS_CLI_INSTALL_URL`  | override the CLI install-script source                                                    |
+| `COS_CLI`              | use a specific `createos` binary instead of the one on `PATH`                             |
+| `COS_STATE_DIR`        | override the statefile directory (default `${XDG_CACHE_HOME:-~/.cache}/createos-sandbox`) |
+| `COS_NO_HINT=1`        | silence the auto-suggest hook                                                             |
 
 ## Troubleshooting
 

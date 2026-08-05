@@ -29,26 +29,26 @@ Everything works inside the session — sandbox, networks, device access, port f
 
 ### Optional flags
 
-| Flag | Purpose |
-|------|---------|
-| `--shape <shape>` | Sandbox size (default: `s-2vcpu-2gb`) |
-| `--rootfs <name>` | Base image or template |
+| Flag               | Purpose                                          |
+| ------------------ | ------------------------------------------------ |
+| `--shape <shape>`  | Sandbox size (default: `s-2vcpu-2gb`)            |
+| `--rootfs <name>`  | Base image or template                           |
 | `--network <name>` | Network(s) to join at creation (comma-separated) |
 
 ### In-session commands
 
-| Command | Description |
-|---------|-------------|
-| `/sandbox` | Show sandbox status |
-| `/network create <name>` | Create a private network |
-| `/network ls` | List your networks |
-| `/network show <name>` | Show network members + IPs |
-| `/network attach <name>` | Join this sandbox to a network |
-| `/network detach <name>` | Leave a network |
-| `/network rm <name>` | Delete a network |
-| `/device status` | Show registered devices |
+| Command                    | Description                           |
+| -------------------------- | ------------------------------------- |
+| `/sandbox`                 | Show sandbox status                   |
+| `/network create <name>`   | Create a private network              |
+| `/network ls`              | List your networks                    |
+| `/network show <name>`     | Show network members + IPs            |
+| `/network attach <name>`   | Join this sandbox to a network        |
+| `/network detach <name>`   | Leave a network                       |
+| `/network rm <name>`       | Delete a network                      |
+| `/device status`           | Show registered devices               |
 | `/device attach <network>` | Give your machine access to a network |
-| `/device detach <network>` | Remove access |
+| `/device detach <network>` | Remove access                         |
 
 ### Agent tools
 
