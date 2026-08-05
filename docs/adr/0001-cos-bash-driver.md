@@ -6,24 +6,24 @@ The `createos-sandbox` plugin does not call the `createos` CLI directly. It ship
 
 ## Context
 
-`createos sandbox` already exposes the primitives: `create`, `exec`, `push`, `pull`, `rm`, `sync`, `tunnel`, `fork`, `disk`, `network`, `firewall`, `shell`. It does not expose the *compositions* an agent needs. `cos` supplies exactly six things on top:
+`createos sandbox` already exposes the primitives: `create`, `exec`, `push`, `pull`, `rm`, `sync`, `tunnel`, `fork`, `disk`, `network`, `firewall`, `shell`. It does not expose the _compositions_ an agent needs. `cos` supplies exactly six things on top:
 
-| `cos` adds | Why the primitives aren't enough |
-|---|---|
-| `offload` | stage → exec → pull → **auto-destroy** as one atomic verb; the safe default |
-| `fanout` | N throwaway boxes in parallel, per-job logs + exit codes, concurrency cap |
-| `run_keepalive` | `createos sandbox exec` drops its stream on long/quiet builds; this detaches, heartbeats, and re-attaches |
-| staging + excludes | `push` has no ignore semantics, so `.git`/`node_modules`/`target` get uploaded by hand |
-| project-box state | a reusable per-git-root box (`cos-proj-<12hex>`), so `up`/`run`/`sync`/`down` address "this repo's box" |
-| egress presets | `firewall` is a raw primitive; `-p python-uv\|rust-cargo\|npm\|github` are the allowlists people actually want |
+| `cos` adds         | Why the primitives aren't enough                                                                               |
+| ------------------ | -------------------------------------------------------------------------------------------------------------- |
+| `offload`          | stage → exec → pull → **auto-destroy** as one atomic verb; the safe default                                    |
+| `fanout`           | N throwaway boxes in parallel, per-job logs + exit codes, concurrency cap                                      |
+| `run_keepalive`    | `createos sandbox exec` drops its stream on long/quiet builds; this detaches, heartbeats, and re-attaches      |
+| staging + excludes | `push` has no ignore semantics, so `.git`/`node_modules`/`target` get uploaded by hand                         |
+| project-box state  | a reusable per-git-root box (`cos-proj-<12hex>`), so `up`/`run`/`sync`/`down` address "this repo's box"        |
+| egress presets     | `firewall` is a raw primitive; `-p python-uv\|rust-cargo\|npm\|github` are the allowlists people actually want |
 
 Everything else `cos` does is passthrough. The genuinely additive surface is small — and, notably, none of it is Claude-specific. `run_keepalive` is a correctness fix for `exec`; staging excludes are a correctness fix for `push`. Both currently exist only for plugin users.
 
 ## Consequences
 
-**The driver must be located before it can be run, and that fails silently.** Slash commands invoke `"${CLAUDE_PLUGIN_ROOT}/scripts/cos"`, which Claude Code expands at command-load time — that path works. But `CLAUDE_PLUGIN_ROOT` is **unset in the Bash tool's environment**, so when the *skill* (rather than a slash command) tells Claude to run `${CLAUDE_PLUGIN_ROOT}/scripts/cos`, it expands to `/scripts/cos` and dies with exit 127. Autonomous use — the skill deciding on its own to offload, which is the plugin's entire reason to exist — hits this on every invocation.
+**The driver must be located before it can be run, and that fails silently.** Slash commands invoke `"${CLAUDE_PLUGIN_ROOT}/scripts/cos"`, which Claude Code expands at command-load time — that path works. But `CLAUDE_PLUGIN_ROOT` is **unset in the Bash tool's environment**, so when the _skill_ (rather than a slash command) tells Claude to run `${CLAUDE_PLUGIN_ROOT}/scripts/cos`, it expands to `/scripts/cos` and dies with exit 127. Autonomous use — the skill deciding on its own to offload, which is the plugin's entire reason to exist — hits this on every invocation.
 
-**And it fails open, not closed.** Verified end-to-end on 2026-07-09 by running Claude Code against this plugin in tmux: on `/scripts/cos: no such file`, the agent concluded "cos not on PATH … Skill docs assume cos. Using createos directly", then hand-rolled the offload out of `create`/`push`/`exec`. In its own words: *"no egress restriction was applied … don't read this run as evidence the lockdown path works."* It left the box running and billing. Losing the wrapper means silently losing keepalive, egress restriction, auto-destroy, and the `ensure_auth` preflight — every safety property the wrapper exists to enforce. A missing driver should hard-stop, not degrade into a less safe path.
+**And it fails open, not closed.** Verified end-to-end on 2026-07-09 by running Claude Code against this plugin in tmux: on `/scripts/cos: no such file`, the agent concluded "cos not on PATH … Skill docs assume cos. Using createos directly", then hand-rolled the offload out of `create`/`push`/`exec`. In its own words: _"no egress restriction was applied … don't read this run as evidence the lockdown path works."_ It left the box running and billing. Losing the wrapper means silently losing keepalive, egress restriction, auto-destroy, and the `ensure_auth` preflight — every safety property the wrapper exists to enforce. A missing driver should hard-stop, not degrade into a less safe path.
 
 **A contributing footgun lives upstream.** `createos` exits **0** on an unknown subcommand and prints help. That masked the adapter failure for several turns, both for the agent under test and for the human reading over its shoulder. Worth fixing in `createos-cli` independent of anything here.
 
@@ -36,9 +36,9 @@ Everything else `cos` does is passthrough. The genuinely additive surface is sma
 The recommendation on record is to **fold the engine into `createos-cli` and keep the plugin thin**:
 
 - **Move to `createos-cli` (Go):** `offload`, `fanout`, keepalive/re-attach, staging + excludes, project-box lifecycle (`up`/`run`/`down`/`status`, on top of the existing `.createos.json` + `FindProjectConfig` machinery), egress presets.
-- **Keep in the plugin:** the skill (*when* to offload, what never to offload), the slash commands, the `offload-hint` hook, the agent-facing safety prose.
+- **Keep in the plugin:** the skill (_when_ to offload, what never to offload), the slash commands, the `offload-hint` hook, the agent-facing safety prose.
 
-`cos` then shrinks to nothing and is deleted. The `CLAUDE_PLUGIN_ROOT` bootstrap problem disappears with it — the driver becomes `createos`, already on `PATH` — as does `ensure_auth`, since the CLI owns auth. Making `offload` a first-class CLI verb also fixes the deeper problem the test exposed: *any* capable agent handed only the primitives will compose them and get the safety properties wrong. The safe path has to be the obvious one.
+`cos` then shrinks to nothing and is deleted. The `CLAUDE_PLUGIN_ROOT` bootstrap problem disappears with it — the driver becomes `createos`, already on `PATH` — as does `ensure_auth`, since the CLI owns auth. Making `offload` a first-class CLI verb also fixes the deeper problem the test exposed: _any_ capable agent handed only the primitives will compose them and get the safety properties wrong. The safe path has to be the obvious one.
 
 Not yet decided, and deliberately not decided here:
 
@@ -48,6 +48,6 @@ Not yet decided, and deliberately not decided here:
 
 ### Shipped since
 
-**Interim fix for `CLAUDE_PLUGIN_ROOT` — implemented** in `scripts/session-start.sh` (`SessionStart` hook). Hooks *do* receive `CLAUDE_PLUGIN_ROOT`, so the hook resolves it and states the driver's absolute path in context, along with an explicit instruction that a missing driver is a hard stop rather than a licence to hand-roll the offload from raw CLI primitives. No filesystem mutation; deleted alongside `cos` when the engine moves. Alternatives rejected at the time and still rejected: having the hook run `cos install` (writes to `~/.local/bin` unasked), and teaching the skill to glob `~/.claude/plugins/cache/*/createos-sandbox/*/scripts/cos` (brittle — an internal Claude Code layout, and wrong for `--plugin-dir` dev installs).
+**Interim fix for `CLAUDE_PLUGIN_ROOT` — implemented** in `scripts/session-start.sh` (`SessionStart` hook). Hooks _do_ receive `CLAUDE_PLUGIN_ROOT`, so the hook resolves it and states the driver's absolute path in context, along with an explicit instruction that a missing driver is a hard stop rather than a licence to hand-roll the offload from raw CLI primitives. No filesystem mutation; deleted alongside `cos` when the engine moves. Alternatives rejected at the time and still rejected: having the hook run `cos install` (writes to `~/.local/bin` unasked), and teaching the skill to glob `~/.claude/plugins/cache/*/createos-sandbox/*/scripts/cos` (brittle — an internal Claude Code layout, and wrong for `--plugin-dir` dev installs).
 
-This closes the *reliability* half of the fail-open problem. It does not close the *design* half: the safe path is still a wrapper the agent has to find, rather than the obvious one. That argument for folding the engine into `createos-cli` stands unchanged.
+This closes the _reliability_ half of the fail-open problem. It does not close the _design_ half: the safe path is still a wrapper the agent has to find, rather than the obvious one. That argument for folding the engine into `createos-cli` stands unchanged.

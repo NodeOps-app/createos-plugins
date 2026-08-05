@@ -14,15 +14,15 @@ Pi agent (local)  →  pi.exec('createos', [...])  →  CreateOS API  →  Sandb
 
 ## File layout
 
-| File | Purpose |
-|---|---|
-| `index.ts` | Extension entry point: flags, slash commands, lifecycle hooks |
-| `src/cli.ts` | All `createos` CLI wrappers (sandbox, network, disk, device, tunnel, sync) |
-| `src/tools.ts` | 33 registered tools, each single-purpose with `sandbox_` prefix |
-| `src/ops.ts` | BashOps/ReadOps/WriteOps/EditOps/LsOps backed by CLI exec/push/pull |
-| `src/find-tool.ts` | Remote find via `createos sandbox exec` (rg/POSIX find fallback) |
-| `src/grep-tool.ts` | Remote grep via `createos sandbox exec` (rg/POSIX grep fallback) |
-| `src/util.ts` | `shellQuote`, `shortId`, `joinPath` |
+| File               | Purpose                                                                    |
+| ------------------ | -------------------------------------------------------------------------- |
+| `index.ts`         | Extension entry point: flags, slash commands, lifecycle hooks              |
+| `src/cli.ts`       | All `createos` CLI wrappers (sandbox, network, disk, device, tunnel, sync) |
+| `src/tools.ts`     | 33 registered tools, each single-purpose with `sandbox_` prefix            |
+| `src/ops.ts`       | BashOps/ReadOps/WriteOps/EditOps/LsOps backed by CLI exec/push/pull        |
+| `src/find-tool.ts` | Remote find via `createos sandbox exec` (rg/POSIX find fallback)           |
+| `src/grep-tool.ts` | Remote grep via `createos sandbox exec` (rg/POSIX grep fallback)           |
+| `src/util.ts`      | `shellQuote`, `shortId`, `joinPath`                                        |
 
 ## Pi extension best practices (enforced)
 
@@ -39,48 +39,55 @@ Pi agent (local)  →  pi.exec('createos', [...])  →  CreateOS API  →  Sandb
 ## Tool inventory (33 tools)
 
 ### Built-in replacements (7)
+
 `bash`, `read`, `write`, `edit`, `ls`, `find`, `grep` — transparently routed
 to the sandbox when `--createos` is active, local when off.
 
 ### Sandbox lifecycle (7)
+
 `sandbox_create`, `sandbox_exec`, `sandbox_info`, `sandbox_list`,
 `sandbox_pause`, `sandbox_resume`, `sandbox_fork`, `sandbox_destroy`
 
 ### Sandbox config (5)
+
 `sandbox_ingress`, `sandbox_firewall`, `sandbox_bandwidth`,
 `sandbox_shapes`, `sandbox_images`
 
 ### Ports & sync (3)
+
 `sandbox_preview_url`, `sandbox_tunnel`, `sandbox_sync`
 
 ### Networks (6)
+
 `sandbox_network_create`, `sandbox_network_list`, `sandbox_network_show`,
 `sandbox_network_attach`, `sandbox_network_detach`, `sandbox_network_delete`
 
 ### Disks (6)
+
 `sandbox_disk_create`, `sandbox_disk_list`, `sandbox_disk_show`,
 `sandbox_disk_delete`, `sandbox_disk_attach`, `sandbox_disk_detach`
 
 ### Device VPN (5)
+
 `sandbox_device_register`, `sandbox_device_status`, `sandbox_vpn_up`,
 `sandbox_device_attach`, `sandbox_device_detach`
 
 ## Flags
 
-| Flag | Type | Purpose |
-|---|---|---|
-| `--createos` | boolean | Activate the extension |
-| `--shape` | string | Sandbox size (default: `s-2vcpu-2gb`) |
-| `--rootfs` | string | Base image or template |
-| `--network` | string | Network(s) to join at creation (comma-separated) |
+| Flag         | Type    | Purpose                                          |
+| ------------ | ------- | ------------------------------------------------ |
+| `--createos` | boolean | Activate the extension                           |
+| `--shape`    | string  | Sandbox size (default: `s-2vcpu-2gb`)            |
+| `--rootfs`   | string  | Base image or template                           |
+| `--network`  | string  | Network(s) to join at creation (comma-separated) |
 
 ## Slash commands
 
-| Command | Purpose |
-|---|---|
-| `/sandbox` | Show active sandbox status |
+| Command                 | Purpose                                             |
+| ----------------------- | --------------------------------------------------- |
+| `/sandbox`              | Show active sandbox status                          |
 | `/network <sub> [args]` | Network CRUD (create, ls, show, rm, attach, detach) |
-| `/device <sub> [args]` | Device status, attach, detach |
+| `/device <sub> [args]`  | Device status, attach, detach                       |
 
 ## Lifecycle
 
