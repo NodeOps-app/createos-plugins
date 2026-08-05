@@ -1,13 +1,13 @@
 /** Small helpers shared across the plugin. */
 
 export function shellQuote(arg: string): string {
-  return `'${arg.replace(/'/g, `'\\''`)}'`
+  return `'${arg.replace(/'/g, `'\\''`)}'`;
 }
 
 export function shortId(id: string): string {
-  return id.slice(0, 12)
+  return id.slice(0, 12);
 }
 
 export function joinPath(base: string, child: string): string {
-  return `${base.replace(/[/]+$/, '')}/${child.replace(/^[/]+/, '')}`
+  return `${base.replace(/[/]+$/, "")}/${child.replace(/^[/]+/, "")}`;
 }

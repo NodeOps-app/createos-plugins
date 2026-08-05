@@ -20,26 +20,26 @@ packages/opencode-plugin/
 
 ### Key Design Decisions
 
-| Decision | Rationale |
-|----------|-----------|
-| **CLI-only** (no HTTP client) | Same as Pi — shells out to `createos` CLI via `$` (Bun shell). Zero maintenance when CLI adds features. |
-| **Same-name tool override** | OpenCode plugin tools with same name as built-ins take precedence. We override: `bash`, `read`, `write`, `edit`, `ls`, `find`, `grep`. |
-| **`session.created` + `session.idle`** for lifecycle | No direct `session_start`/`session_shutdown` like Pi — use OpenCode's event system. |
-| **No ops.ts** | Pi needed `*Operations` interfaces to plug into its tool factories. OpenCode tools are self-contained — CLI calls go directly in each tool's `execute()`. |
-| **No flag system** | Pi used `pi.registerFlag('createos')`. OpenCode uses plugin config in `opencode.json` or `CREATEOS_ENABLED` env var. |
+| Decision                                             | Rationale                                                                                                                                                 |
+| ---------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| **CLI-only** (no HTTP client)                        | Same as Pi — shells out to `createos` CLI via `$` (Bun shell). Zero maintenance when CLI adds features.                                                   |
+| **Same-name tool override**                          | OpenCode plugin tools with same name as built-ins take precedence. We override: `bash`, `read`, `write`, `edit`, `ls`, `find`, `grep`.                    |
+| **`session.created` + `session.idle`** for lifecycle | No direct `session_start`/`session_shutdown` like Pi — use OpenCode's event system.                                                                       |
+| **No ops.ts**                                        | Pi needed `*Operations` interfaces to plug into its tool factories. OpenCode tools are self-contained — CLI calls go directly in each tool's `execute()`. |
+| **No flag system**                                   | Pi used `pi.registerFlag('createos')`. OpenCode uses plugin config in `opencode.json` or `CREATEOS_ENABLED` env var.                                      |
 
 ## 2. API Mapping: Pi Extension → OpenCode Plugin
 
-| Pi Extension | OpenCode Plugin | Notes |
-|---|---|---|
-| `export default function(pi)` | `export const CreateOS: Plugin = async (ctx) => {}` | Different entry point signature |
-| `pi.registerTool({ name, parameters: Type.Object(...), execute })` | `tool({ description, args: { ... tool.schema.* }, execute })` | TypeBox → tool.schema (Zod-like) |
-| `pi.exec('createos', args)` | `ctx.$\`createos ${args}\`` | Bun shell API |
-| `pi.registerFlag('createos')` | `opencode.json` config or env var | No flag registration in OpenCode |
-| `pi.registerCommand('sandbox', { handler })` | Not directly supported — use TUI command hook or tool | OpenCode has `tui.command.execute` event |
-| `pi.getFlag('createos')` | `process.env.CREATEOS_ENABLED` or config check | |
-| `pi.session.get(key)` / `pi.session.set(key)` | File-based state or in-memory Map | No session storage API in OpenCode |
-| Signal/abort handling | `context` parameter in `execute()` | |
+| Pi Extension                                                       | OpenCode Plugin                                               | Notes                                    |
+| ------------------------------------------------------------------ | ------------------------------------------------------------- | ---------------------------------------- |
+| `export default function(pi)`                                      | `export const CreateOS: Plugin = async (ctx) => {}`           | Different entry point signature          |
+| `pi.registerTool({ name, parameters: Type.Object(...), execute })` | `tool({ description, args: { ... tool.schema.* }, execute })` | TypeBox → tool.schema (Zod-like)         |
+| `pi.exec('createos', args)`                                        | `ctx.$\`createos ${args}\``                                   | Bun shell API                            |
+| `pi.registerFlag('createos')`                                      | `opencode.json` config or env var                             | No flag registration in OpenCode         |
+| `pi.registerCommand('sandbox', { handler })`                       | Not directly supported — use TUI command hook or tool         | OpenCode has `tui.command.execute` event |
+| `pi.getFlag('createos')`                                           | `process.env.CREATEOS_ENABLED` or config check                |                                          |
+| `pi.session.get(key)` / `pi.session.set(key)`                      | File-based state or in-memory Map                             | No session storage API in OpenCode       |
+| Signal/abort handling                                              | `context` parameter in `execute()`                            |                                          |
 
 ## 3. Phased Implementation
 
@@ -52,22 +52,23 @@ Port `cli.ts` from Pi, replacing `pi.exec()` calls with Bun shell (`$`):
 ```typescript
 // Pi version:
 async function run(pi: ExtensionAPI, args: string[]): Promise<ExecResult> {
-  const res = await pi.exec('createos', args)
-  return { code: res.code, stdout: res.stdout ?? '', stderr: res.stderr ?? '' }
+  const res = await pi.exec("createos", args);
+  return { code: res.code, stdout: res.stdout ?? "", stderr: res.stderr ?? "" };
 }
 
 // OpenCode version:
 async function run($: BunShell, args: string[]): Promise<ExecResult> {
-  const res = await $`createos ${args}`.quiet()
+  const res = await $`createos ${args}`.quiet();
   return {
     code: res.exitCode,
     stdout: res.stdout.toString(),
     stderr: res.stderr.toString(),
-  }
+  };
 }
 ```
 
 Functions to port (all 20+):
+
 - `createSandbox`, `getSandbox`, `destroySandbox`, `pauseSandbox`, `resumeSandbox`
 - `listSandboxes`, `forkSandbox`, `editSandbox`, `sandboxExec`
 - `pushFile`, `pullFile`, `startTunnel`, `getPreviewUrl`
@@ -99,6 +100,7 @@ bash: tool({
 ```
 
 Tools to override:
+
 1. **bash** — route shell commands to sandbox via `createos sandbox exec`
 2. **read** — pull file content via `createos sandbox pull`
 3. **write** — push file content via `createos sandbox push`
@@ -141,15 +143,15 @@ args: {
 
 ```typescript
 export const CreateOS: Plugin = async ({ project, client, $, directory }) => {
-  let active: ActiveSandbox | null = null
+  let active: ActiveSandbox | null = null;
 
   // Auto-create sandbox on session start
   const sandbox = await cli.createSandbox($, {
-    shape: process.env.CREATEOS_SHAPE ?? 's-2vcpu-2gb',
+    shape: process.env.CREATEOS_SHAPE ?? "s-2vcpu-2gb",
     rootfs: process.env.CREATEOS_ROOTFS,
     ingress: true,
-  })
-  active = { sandboxId: sandbox.id, cwd: '/root' }
+  });
+  active = { sandboxId: sandbox.id, cwd: "/root" };
 
   await client.app.log({
     body: {
@@ -157,32 +159,33 @@ export const CreateOS: Plugin = async ({ project, client, $, directory }) => {
       level: "info",
       message: `Sandbox ready: ${sandbox.id}`,
     },
-  })
+  });
 
   return {
     // Inject env vars for CLI auth
     "shell.env": async (input, output) => {
       if (process.env.CREATEOS_API_KEY) {
-        output.env.CREATEOS_API_KEY = process.env.CREATEOS_API_KEY
+        output.env.CREATEOS_API_KEY = process.env.CREATEOS_API_KEY;
       }
     },
 
     // Cleanup on idle (optional — sandbox auto-destroys)
     event: async ({ event }) => {
       if (event.type === "session.deleted" && active) {
-        await cli.destroySandbox($, active.sandboxId)
-        active = null
+        await cli.destroySandbox($, active.sandboxId);
+        active = null;
       }
     },
 
-    tool: { /* ... all 33 tools ... */ },
-  }
-}
+    tool: {/* ... all 33 tools ... */},
+  };
+};
 ```
 
 ### Phase 5: Configuration & Distribution
 
 **`package.json`:**
+
 ```json
 {
   "name": "@createos/opencode",
@@ -197,6 +200,7 @@ export const CreateOS: Plugin = async ({ project, client, $, directory }) => {
 ```
 
 **User installs via `opencode.json`:**
+
 ```json
 {
   "plugin": ["@createos/opencode"]
@@ -204,37 +208,40 @@ export const CreateOS: Plugin = async ({ project, client, $, directory }) => {
 ```
 
 **Environment variables (configuration):**
-| Var | Default | Description |
-|-----|---------|-------------|
-| `CREATEOS_ENABLED` | `true` (when plugin loaded) | Disable to fall back to local tools |
-| `CREATEOS_SHAPE` | `s-2vcpu-2gb` | Sandbox shape |
-| `CREATEOS_ROOTFS` | `devbox:1` | Base image |
-| `CREATEOS_NETWORKS` | (none) | Comma-separated network names to join |
-| `CREATEOS_API_KEY` | (none) | API key (alternative to `createos login`) |
+
+| Var                 | Default                     | Description                               |
+| ------------------- | --------------------------- | ----------------------------------------- |
+| `CREATEOS_ENABLED`  | `true` (when plugin loaded) | Disable to fall back to local tools       |
+| `CREATEOS_SHAPE`    | `s-2vcpu-2gb`               | Sandbox shape                             |
+| `CREATEOS_ROOTFS`   | `devbox:1`                  | Base image                                |
+| `CREATEOS_NETWORKS` | (none)                      | Comma-separated network names to join     |
+| `CREATEOS_API_KEY`  | (none)                      | API key (alternative to `createos login`) |
 
 ## 4. What Changes vs. Pi Extension
 
-| Aspect | Pi Extension | OpenCode Plugin |
-|--------|-------------|-----------------|
-| Entry point | `export default function(pi)` | `export const CreateOS: Plugin = async (ctx) => {}` |
-| Schema lib | TypeBox (`Type.Object`, `Type.String`) | `tool.schema.*` (Zod-like) |
-| Shell exec | `pi.exec('createos', args)` | `$\`createos ...\`` (Bun shell) |
-| Flags | `pi.registerFlag()` / `pi.getFlag()` | Env vars |
-| Commands | `pi.registerCommand()` | Not needed (tools are sufficient) |
-| Session state | `pi.session.get/set` | In-memory + filesystem |
-| Ops layer | Required (`*Operations` interfaces) | Not needed — direct CLI calls in `execute()` |
-| Tool registration | `pi.registerTool({ name, parameters, execute })` | `tool({ description, args, execute })` returned in `tool:` map |
-| Lifecycle | `session_start`, `before_agent_start`, `session_shutdown` | `session.created` event, `shell.env` hook, `session.deleted` event |
+| Aspect            | Pi Extension                                              | OpenCode Plugin                                                    |
+| ----------------- | --------------------------------------------------------- | ------------------------------------------------------------------ |
+| Entry point       | `export default function(pi)`                             | `export const CreateOS: Plugin = async (ctx) => {}`                |
+| Schema lib        | TypeBox (`Type.Object`, `Type.String`)                    | `tool.schema.*` (Zod-like)                                         |
+| Shell exec        | `pi.exec('createos', args)`                               | `$\`createos ...\`` (Bun shell)                                    |
+| Flags             | `pi.registerFlag()` / `pi.getFlag()`                      | Env vars                                                           |
+| Commands          | `pi.registerCommand()`                                    | Not needed (tools are sufficient)                                  |
+| Session state     | `pi.session.get/set`                                      | In-memory + filesystem                                             |
+| Ops layer         | Required (`*Operations` interfaces)                       | Not needed — direct CLI calls in `execute()`                       |
+| Tool registration | `pi.registerTool({ name, parameters, execute })`          | `tool({ description, args, execute })` returned in `tool:` map     |
+| Lifecycle         | `session_start`, `before_agent_start`, `session_shutdown` | `session.created` event, `shell.env` hook, `session.deleted` event |
 
 ## 5. Reuse from Pi Extension
 
 **Direct port (adapt syntax only):**
+
 - `src/cli.ts` — all 30+ CLI wrapper functions (change `pi.exec` → `$`)
 - `src/util.ts` — `shellQuote`, `shortId`, `joinPath` (identical)
 - Tool descriptions, promptGuidelines text — copy verbatim
 - Error handling patterns (`CLIError` class)
 
 **Rewrite needed:**
+
 - `index.ts` — completely different plugin shape
 - `src/tools.ts` — same logic, different registration API
 - `src/ops.ts` — eliminated (operations folded into tool execute functions)
@@ -242,15 +249,15 @@ export const CreateOS: Plugin = async ({ project, client, $, directory }) => {
 
 ## 6. Estimated Scope
 
-| Component | Lines (est.) | Effort |
-|-----------|-------------|--------|
-| `src/cli.ts` | ~400 | Port from Pi (syntax changes only) |
-| `src/util.ts` | ~15 | Copy from Pi |
-| `src/tools.ts` | ~700 | Rewrite tool registrations |
-| `src/hooks.ts` | ~80 | New (lifecycle, shell.env) |
-| `index.ts` | ~100 | New (plugin entry, sandbox boot) |
-| `package.json` + `tsconfig.json` | ~30 | New |
-| **Total** | **~1,325** | **~75% port, ~25% new** |
+| Component                        | Lines (est.) | Effort                             |
+| -------------------------------- | ------------ | ---------------------------------- |
+| `src/cli.ts`                     | ~400         | Port from Pi (syntax changes only) |
+| `src/util.ts`                    | ~15          | Copy from Pi                       |
+| `src/tools.ts`                   | ~700         | Rewrite tool registrations         |
+| `src/hooks.ts`                   | ~80          | New (lifecycle, shell.env)         |
+| `index.ts`                       | ~100         | New (plugin entry, sandbox boot)   |
+| `package.json` + `tsconfig.json` | ~30          | New                                |
+| **Total**                        | **~1,325**   | **~75% port, ~25% new**            |
 
 Compared to Pi's ~5,500 lines: significantly smaller because we eliminate the ops layer, command system, and flag infrastructure. OpenCode's simpler plugin API means less boilerplate.
 

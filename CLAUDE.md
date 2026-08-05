@@ -4,11 +4,11 @@ Public plugin marketplace and integrations for CreateOS Sandbox. Three packages
 ship IDE plugins that drive the authed `createos` CLI to run ad-hoc / heavy /
 untrusted code in disposable CreateOS sandboxes:
 
-| Package | IDE | Path |
-|---|---|---|
+| Package              | IDE         | Path                           |
+| -------------------- | ----------- | ------------------------------ |
 | `claude-code-plugin` | Claude Code | `packages/claude-code-plugin/` |
-| `pi-extension` | Pi | `packages/pi-extension/` |
-| `@createos/opencode` | OpenCode | `packages/opencode-plugin/` |
+| `pi-extension`       | Pi          | `packages/pi-extension/`       |
+| `@createos/opencode` | OpenCode    | `packages/opencode-plugin/`    |
 
 Marketplace index is the root `README.md`; each package has its own `README.md`.
 
@@ -17,8 +17,8 @@ Marketplace index is the root `README.md`; each package has its own `README.md`.
 Architectural decisions live in `docs/adr/`. Read the relevant one before
 reworking the thing it covers.
 
-| ADR | Decision | Status |
-|---|---|---|
+| ADR                                        | Decision                                                                                 | Status                     |
+| ------------------------------------------ | ---------------------------------------------------------------------------------------- | -------------------------- |
 | [0001](./docs/adr/0001-cos-bash-driver.md) | `cos`, a bash driver, as the plugin's execution engine — not the `createos` CLI directly | accepted, **under review** |
 
 ADR-0001 is load-bearing for anyone touching `scripts/cos`, the skill, or the
@@ -56,13 +56,13 @@ claim aligned with `fc`. This repo is one of five in the product mesh.
 
 ### Repo map
 
-| repo | path | role | public? | changes that ripple across the mesh |
-|---|---|---|---|---|
-| **fc** | `../fc` | control-plane — **source of truth** | 🔒 private | HTTP API, wire/JSON fields, error shapes, lifecycle/state, limits/quotas, behavior |
-| **fc-sdk** | `../fc-sdk` | TypeScript SDK **+ `examples/`** | 🌐 public | public SDK methods, wire types, example apps |
-| **createos-cli** | `../createos-cli` | Go CLI | 🌐 public | commands, flags, help/UX text |
-| **website-04** | `../website-04` (`content/docs/Sandbox`) | public docs | 🌐 public | REST / SDK / CLI reference + concept pages |
-| **createos** | `../createos-claude-plugins` | Plugin marketplace; Claude Code, Pi, OpenCode integrations over the `createos` CLI | 🌐 public | skills, slash commands, hooks, tools |
+| repo             | path                                     | role                                                                               | public?    | changes that ripple across the mesh                                                |
+| ---------------- | ---------------------------------------- | ---------------------------------------------------------------------------------- | ---------- | ---------------------------------------------------------------------------------- |
+| **fc**           | `../fc`                                  | control-plane — **source of truth**                                                | 🔒 private | HTTP API, wire/JSON fields, error shapes, lifecycle/state, limits/quotas, behavior |
+| **fc-sdk**       | `../fc-sdk`                              | TypeScript SDK **+ `examples/`**                                                   | 🌐 public  | public SDK methods, wire types, example apps                                       |
+| **createos-cli** | `../createos-cli`                        | Go CLI                                                                             | 🌐 public  | commands, flags, help/UX text                                                      |
+| **website-04**   | `../website-04` (`content/docs/Sandbox`) | public docs                                                                        | 🌐 public  | REST / SDK / CLI reference + concept pages                                         |
+| **createos**     | `../createos-claude-plugins`             | Plugin marketplace; Claude Code, Pi, OpenCode integrations over the `createos` CLI | 🌐 public  | skills, slash commands, hooks, tools                                               |
 
 ### What counts as a shared surface
 

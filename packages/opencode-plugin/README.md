@@ -38,6 +38,7 @@ cd packages/opencode-plugin && bun install
 ## Prerequisites
 
 1. **createos CLI** — auto-installed on first use, or manually:
+
    ```bash
    curl -sfL https://raw.githubusercontent.com/NodeOps-app/createos-cli/main/install.sh | sh
    ```
@@ -60,83 +61,83 @@ cd packages/opencode-plugin && bun install
 
 Environment variables:
 
-| Variable | Default | Description |
-|---|---|---|
-| `CREATEOS_ENABLED` | `true` | Set to `false` to disable the plugin |
-| `CREATEOS_SHAPE` | `s-2vcpu-2gb` | Sandbox VM size |
-| `CREATEOS_ROOTFS` | `devbox:1` | Base image for the sandbox |
+| Variable           | Default       | Description                          |
+| ------------------ | ------------- | ------------------------------------ |
+| `CREATEOS_ENABLED` | `true`        | Set to `false` to disable the plugin |
+| `CREATEOS_SHAPE`   | `s-2vcpu-2gb` | Sandbox VM size                      |
+| `CREATEOS_ROOTFS`  | `devbox:1`    | Base image for the sandbox           |
 
 ## Tool inventory (33 tools)
 
 ### Execute & Files
 
-| Tool | Description |
-|---|---|
+| Tool           | Description                                                            |
+| -------------- | ---------------------------------------------------------------------- |
 | `sandbox_exec` | Run a shell command inside the sandbox. **Use this for ALL commands.** |
-| `sandbox_pull` | Read/download a file from the sandbox |
-| `sandbox_push` | Write/upload a file to the sandbox |
+| `sandbox_pull` | Read/download a file from the sandbox                                  |
+| `sandbox_push` | Write/upload a file to the sandbox                                     |
 
 ### Sandbox lifecycle
 
-| Tool | Description |
-|---|---|
-| `sandbox_info` | Status, IP, shape, region, ingress URL |
-| `sandbox_create` | Create an additional sandbox (multi-node setups) |
-| `sandbox_list` | List all sandboxes |
-| `sandbox_pause` | Pause sandbox, saving state |
-| `sandbox_resume` | Resume a paused sandbox |
-| `sandbox_fork` | Clone a paused sandbox |
-| `sandbox_destroy` | Permanently delete a sandbox |
+| Tool              | Description                                      |
+| ----------------- | ------------------------------------------------ |
+| `sandbox_info`    | Status, IP, shape, region, ingress URL           |
+| `sandbox_create`  | Create an additional sandbox (multi-node setups) |
+| `sandbox_list`    | List all sandboxes                               |
+| `sandbox_pause`   | Pause sandbox, saving state                      |
+| `sandbox_resume`  | Resume a paused sandbox                          |
+| `sandbox_fork`    | Clone a paused sandbox                           |
+| `sandbox_destroy` | Permanently delete a sandbox                     |
 
 ### Config
 
-| Tool | Description |
-|---|---|
-| `sandbox_ingress` | Toggle public HTTPS URL |
-| `sandbox_firewall` | Set egress firewall rules |
+| Tool                | Description                 |
+| ------------------- | --------------------------- |
+| `sandbox_ingress`   | Toggle public HTTPS URL     |
+| `sandbox_firewall`  | Set egress firewall rules   |
 | `sandbox_bandwidth` | Check bandwidth usage/quota |
-| `sandbox_shapes` | List available VM sizes |
-| `sandbox_images` | List available base images |
+| `sandbox_shapes`    | List available VM sizes     |
+| `sandbox_images`    | List available base images  |
 
 ### Ports & connectivity
 
-| Tool | Description |
-|---|---|
-| `sandbox_preview_url` | Get a public HTTPS URL for a port (preferred) |
-| `sandbox_tunnel` | Forward a sandbox port to localhost |
-| `sandbox_sync` | Bidirectional file sync between local and sandbox |
+| Tool                  | Description                                       |
+| --------------------- | ------------------------------------------------- |
+| `sandbox_preview_url` | Get a public HTTPS URL for a port (preferred)     |
+| `sandbox_tunnel`      | Forward a sandbox port to localhost               |
+| `sandbox_sync`        | Bidirectional file sync between local and sandbox |
 
 ### Networks (multi-node)
 
-| Tool | Description |
-|---|---|
-| `sandbox_network_create` | Create a private network |
-| `sandbox_network_list` | List networks |
-| `sandbox_network_show` | Show network details and member IPs |
-| `sandbox_network_attach` | Attach sandbox to a network |
-| `sandbox_network_detach` | Detach sandbox from a network |
-| `sandbox_network_delete` | Delete a network |
+| Tool                     | Description                         |
+| ------------------------ | ----------------------------------- |
+| `sandbox_network_create` | Create a private network            |
+| `sandbox_network_list`   | List networks                       |
+| `sandbox_network_show`   | Show network details and member IPs |
+| `sandbox_network_attach` | Attach sandbox to a network         |
+| `sandbox_network_detach` | Detach sandbox from a network       |
+| `sandbox_network_delete` | Delete a network                    |
 
 ### Persistent storage (S3 disks)
 
-| Tool | Description |
-|---|---|
+| Tool                  | Description                               |
+| --------------------- | ----------------------------------------- |
 | `sandbox_disk_create` | Register an S3 bucket as a mountable disk |
-| `sandbox_disk_list` | List registered disks |
-| `sandbox_disk_show` | Show disk details |
-| `sandbox_disk_delete` | Delete a disk registration |
-| `sandbox_disk_attach` | Mount a disk into a sandbox |
-| `sandbox_disk_detach` | Unmount a disk from a sandbox |
+| `sandbox_disk_list`   | List registered disks                     |
+| `sandbox_disk_show`   | Show disk details                         |
+| `sandbox_disk_delete` | Delete a disk registration                |
+| `sandbox_disk_attach` | Mount a disk into a sandbox               |
+| `sandbox_disk_detach` | Unmount a disk from a sandbox             |
 
 ### Device VPN (direct IP access)
 
-| Tool | Description |
-|---|---|
-| `sandbox_device_register` | One-time device registration |
-| `sandbox_device_status` | Check device registration status |
-| `sandbox_device_attach` | Attach device to a network |
-| `sandbox_device_detach` | Detach device from a network |
-| `sandbox_vpn_up` | Returns the `sudo` command for user to run manually |
+| Tool                      | Description                                         |
+| ------------------------- | --------------------------------------------------- |
+| `sandbox_device_register` | One-time device registration                        |
+| `sandbox_device_status`   | Check device registration status                    |
+| `sandbox_device_attach`   | Attach device to a network                          |
+| `sandbox_device_detach`   | Detach device from a network                        |
+| `sandbox_vpn_up`          | Returns the `sudo` command for user to run manually |
 
 ## Differences from the Pi extension
 
@@ -144,14 +145,14 @@ This plugin ports the [Pi extension](../pi-extension) (`feat/pi` branch) to
 OpenCode. The core sandbox tools and CLI wrappers are identical, but OpenCode's
 plugin API has limitations:
 
-| Capability | Pi | OpenCode |
-|---|---|---|
+| Capability       | Pi                                                     | OpenCode                                                            |
+| ---------------- | ------------------------------------------------------ | ------------------------------------------------------------------- |
 | Tool replacement | Replaces built-in `bash/read/write/edit` transparently | Cannot replace — uses system prompt to direct LLM to `sandbox_exec` |
-| CLI flags | `pi --createos` | Not supported — use `CREATEOS_ENABLED` env var |
-| TUI integration | Status bar, notifications | Not available to plugins |
-| Slash commands | `/sandbox`, `/network`, `/device` | Not supported |
-| Global install | `pi install npm:@createos/pi` | `opencode plugin @createos/opencode --global` |
-| Shell access | `pi.exec()` | `child_process.execSync` (OpenCode's `$` had routing issues) |
+| CLI flags        | `pi --createos`                                        | Not supported — use `CREATEOS_ENABLED` env var                      |
+| TUI integration  | Status bar, notifications                              | Not available to plugins                                            |
+| Slash commands   | `/sandbox`, `/network`, `/device`                      | Not supported                                                       |
+| Global install   | `pi install npm:@createos/pi`                          | `opencode plugin @createos/opencode --global`                       |
+| Shell access     | `pi.exec()`                                            | `child_process.execSync` (OpenCode's `$` had routing issues)        |
 
 ## Architecture
 
