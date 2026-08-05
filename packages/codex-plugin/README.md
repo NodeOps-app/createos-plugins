@@ -11,7 +11,7 @@ for sandbox lifecycle, networking, persistent disks, VPN, and more.
 codex plugin marketplace add NodeOps-app/createos-claude-plugins
 
 # 2. Install the plugin
-codex plugin add createos-codex@createos
+codex plugin add @createos/codex@createos
 ```
 
 ## Prerequisites
@@ -75,7 +75,7 @@ packages/codex-plugin/
 | Tool replacement | Yes — transparent | No — prompt injection | No — skill-based |
 | Custom tools | 47 registered tools | 33 registered tools | None — uses bash + createos CLI |
 | Integration | `pi.registerTool()` | `tool()` in plugin | Skill teaches CLI commands |
-| Install | `pi install npm:@createos/pi` | `opencode plugin @createos/opencode` | `codex plugin add createos-codex@createos` |
+| Install | `pi install npm:@createos/pi` | `opencode plugin @createos/opencode` | `codex plugin add @createos/codex@createos` |
 
 ## License
 

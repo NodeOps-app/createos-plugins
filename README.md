@@ -55,7 +55,7 @@ pi --createos
 codex plugin marketplace add NodeOps-app/createos-claude-plugins
 
 # 2. Install the plugin
-codex plugin add createos-codex@createos
+codex plugin add @createos/codex@createos
 
 # 3. Launch codex — the skill teaches createos CLI usage
 codex
@@ -78,7 +78,7 @@ The `createos` CLI **auto-installs** on first use. Sign in once with `createos l
 |---|---|
 | [**claude-code-plugin**](./packages/claude-code-plugin) | Hooks-based Claude Code plugin — offload, parallel fanout, scratch shell, reusable box with sync, port tunnel, public HTTPS expose, private-network clusters, BYO-S3 disk mounts, WireGuard VPN, and snapshot/fork — all driving the authed `createos` CLI. |
 | [**pi-extension**](./packages/pi-extension) | Pi coding agent extension that transparently routes all built-in commands (bash, read, write, edit, ls, find, grep) to a remote CreateOS Sandbox, plus 40 additional tools for sandbox lifecycle, configuration, port tunnels, file sync, private networks, persistent disks, custom image templates, remote editors, and device VPN — 47 tools total. |
-| [**createos-codex**](./packages/codex-plugin) | Codex plugin — skill that teaches the `createos` CLI for sandbox lifecycle, networking, disks, and VPN. |
+| [**@createos/codex**](./packages/codex-plugin) | Codex plugin — skill that teaches the `createos` CLI for sandbox lifecycle, networking, disks, and VPN. |
 | [**@createos/opencode**](./packages/opencode-plugin) | OpenCode plugin with 33 sandbox tools (`sandbox_exec`, `sandbox_push`, `sandbox_pull`, networks, disks, VPN, sync) and system prompt injection for sandbox-first workflows. |
 
 ## Claude Code — commands at a glance

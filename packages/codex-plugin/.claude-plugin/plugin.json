@@ -1,5 +1,5 @@
 {
-  "name": "createos-codex",
+  "name": "@createos/codex",
   "displayName": "CreateOS Sandbox",
   "version": "0.1.0",
   "description": "Run code off your machine in disposable CreateOS Sandboxes via the createos CLI.",

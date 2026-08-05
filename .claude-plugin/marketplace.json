@@ -9,7 +9,7 @@
       "description": "Run ad-hoc/heavy/untrusted code in disposable CreateOS Sandboxes; offload, parallel fanout, scratch shell, reusable box with sync, port tunnel, public expose, network clusters, S3 disks, WireGuard VPN, fork, pause/resume, and custom images."
     },
     {
-      "name": "createos-codex",
+      "name": "@createos/codex",
       "source": "./packages/codex-plugin",
       "description": "Codex plugin for disposable CreateOS Sandboxes — skill + createos CLI for sandbox lifecycle, networking, disks, and VPN."
     }
