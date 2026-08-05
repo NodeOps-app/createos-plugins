@@ -15,17 +15,17 @@ Read this when an offload needs tuning: restricting what a build can reach, sizi
 
 Flags come **before** the `<dir> <cmd>` positionals — `cos` parses with `getopts`, which stops at the first positional.
 
-| Flag | Effect |
-|---|---|
-| `-s <shape>` | box size (default `s-1vcpu-1gb`); list with `createos sandbox shapes` |
-| `-r <rootfs>` | base image or custom template (default `devbox:1`) |
-| `-o <path>` | tar this path out of `/work` back into the local dir after the run |
-| `-w <GB>` | try to add a swapfile (best-effort — see below) |
-| `-K` | keep the box if the command exits non-zero, so the cache survives for a retry |
-| `-e <domain>` | allow one outbound destination (repeatable) |
-| `-p <preset>` | apply an egress preset (repeatable, composes with `-e`) |
-| `-E` | explicitly unrestricted egress |
-| `-x <glob>` | extra upload exclude (repeatable) |
+| Flag          | Effect                                                                        |
+| ------------- | ----------------------------------------------------------------------------- |
+| `-s <shape>`  | box size (default `s-1vcpu-1gb`); list with `createos sandbox shapes`         |
+| `-r <rootfs>` | base image or custom template (default `devbox:1`)                            |
+| `-o <path>`   | tar this path out of `/work` back into the local dir after the run            |
+| `-w <GB>`     | try to add a swapfile (best-effort — see below)                               |
+| `-K`          | keep the box if the command exits non-zero, so the cache survives for a retry |
+| `-e <domain>` | allow one outbound destination (repeatable)                                   |
+| `-p <preset>` | apply an egress preset (repeatable, composes with `-e`)                       |
+| `-E`          | explicitly unrestricted egress                                                |
+| `-x <glob>`   | extra upload exclude (repeatable)                                             |
 
 The box is destroyed on success, failure, or interrupt. Two things override that: `-K` on a failing command, and an infra/stream error — both keep the box so the build cache survives, and `cos` prints the reconnect and destroy commands.
 
@@ -37,7 +37,7 @@ The local tree goes to `/work` in the box, one-way. Box-side changes never touch
 
 Excluded from the upload by default: `.git`, `target`, `node_modules`, `__pycache__`, `.venv`, `.mypy_cache`, `.pytest_cache`, `.gradle`, `.cargo/registry`, `dist`, `build`, `.next`, `.turbo`, and large media (`*.gif`, `*.mp4`, `*.mov`, `*.zst`). Add more with `-x <glob>`.
 
-Dependencies are meant to be built *inside* the box, not shipped into it — that is why `node_modules` and friends are excluded rather than uploaded.
+Dependencies are meant to be built _inside_ the box, not shipped into it — that is why `node_modules` and friends are excluded rather than uploaded.
 
 ## Egress: how the firewall actually behaves
 
@@ -56,12 +56,12 @@ DNS keeps resolving even for blocked destinations — a blocked connection fails
 
 ## Egress presets
 
-| Preset | Opens |
-|---|---|
-| `python-uv` | `astral.sh`, `releases.astral.sh`, `pypi.org`, `files.pythonhosted.org` |
-| `rust-cargo` | `crates.io`, `static.crates.io`, `index.crates.io`, `static.rust-lang.org`, `cdn.pyke.io` |
-| `npm` | `registry.npmjs.org` |
-| `github` | `github.com`, `objects.githubusercontent.com`, `raw.githubusercontent.com`, `codeload.github.com` |
+| Preset       | Opens                                                                                             |
+| ------------ | ------------------------------------------------------------------------------------------------- |
+| `python-uv`  | `astral.sh`, `releases.astral.sh`, `pypi.org`, `files.pythonhosted.org`                           |
+| `rust-cargo` | `crates.io`, `static.crates.io`, `index.crates.io`, `static.rust-lang.org`, `cdn.pyke.io`         |
+| `npm`        | `registry.npmjs.org`                                                                              |
+| `github`     | `github.com`, `objects.githubusercontent.com`, `raw.githubusercontent.com`, `codeload.github.com` |
 
 `cdn.pyke.io` is the non-obvious one: `ort-sys` (ONNX Runtime, pulled in by a lot of ML crates) downloads prebuilt binaries from it, so a `cargo build` that looks pure-Rust fails without it. It is already in `rust-cargo`.
 

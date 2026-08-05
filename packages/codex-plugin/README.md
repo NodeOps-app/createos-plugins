@@ -17,6 +17,7 @@ codex plugin add @createos/codex@createos
 ## Prerequisites
 
 1. **createos CLI** — auto-installs on first use, or manually:
+
    ```bash
    curl -sfL https://raw.githubusercontent.com/NodeOps-app/createos-cli/main/install.sh | sh
    ```
@@ -34,19 +35,19 @@ codex plugin add @createos/codex@createos
 
 ## Commands the skill teaches
 
-| Command | What |
-|---|---|
-| `createos sandbox create` | Create a sandbox |
-| `createos sandbox exec <id> -- sh -c '<cmd>'` | Run command inside sandbox |
-| `createos sandbox list` | List sandboxes |
-| `createos sandbox get <id>` | Sandbox status/IP/ingress |
-| `createos sandbox rm <id> --yes` | Destroy sandbox |
-| `createos sandbox pause/resume <id>` | Park/restore |
-| `createos sandbox pull <id> <path> -` | Read file from sandbox |
-| `createos sandbox tunnel --remote <port> --local <port> <id>` | Port forward |
-| `createos sandbox network create/attach/show` | Private networks |
-| `createos sandbox disk create/attach` | S3 disk mounts |
-| `createos sandbox devices register` | Device VPN setup |
+| Command                                                       | What                       |
+| ------------------------------------------------------------- | -------------------------- |
+| `createos sandbox create`                                     | Create a sandbox           |
+| `createos sandbox exec <id> -- sh -c '<cmd>'`                 | Run command inside sandbox |
+| `createos sandbox list`                                       | List sandboxes             |
+| `createos sandbox get <id>`                                   | Sandbox status/IP/ingress  |
+| `createos sandbox rm <id> --yes`                              | Destroy sandbox            |
+| `createos sandbox pause/resume <id>`                          | Park/restore               |
+| `createos sandbox pull <id> <path> -`                         | Read file from sandbox     |
+| `createos sandbox tunnel --remote <port> --local <port> <id>` | Port forward               |
+| `createos sandbox network create/attach/show`                 | Private networks           |
+| `createos sandbox disk create/attach`                         | S3 disk mounts             |
+| `createos sandbox devices register`                           | Device VPN setup           |
 
 ## Architecture
 
@@ -70,12 +71,12 @@ packages/codex-plugin/
 
 ## Differences from Pi and OpenCode plugins
 
-| Capability | Pi | OpenCode | Codex |
-|---|---|---|---|
-| Tool replacement | Yes — transparent | No — prompt injection | No — skill-based |
-| Custom tools | 47 registered tools | 33 registered tools | None — uses bash + createos CLI |
-| Integration | `pi.registerTool()` | `tool()` in plugin | Skill teaches CLI commands |
-| Install | `pi install npm:@createos/pi` | `opencode plugin @createos/opencode` | `codex plugin add @createos/codex@createos` |
+| Capability       | Pi                            | OpenCode                             | Codex                                       |
+| ---------------- | ----------------------------- | ------------------------------------ | ------------------------------------------- |
+| Tool replacement | Yes — transparent             | No — prompt injection                | No — skill-based                            |
+| Custom tools     | 47 registered tools           | 33 registered tools                  | None — uses bash + createos CLI             |
+| Integration      | `pi.registerTool()`           | `tool()` in plugin                   | Skill teaches CLI commands                  |
+| Install          | `pi install npm:@createos/pi` | `opencode plugin @createos/opencode` | `codex plugin add @createos/codex@createos` |
 
 ## License
 

@@ -52,19 +52,19 @@ The clone is a fully independent box with its own id, IP, and quota ledger. The 
 
 Two things to know:
 
-- A fork is **not** tracked as the project box, so `cos down` leaves it running. It *is* recorded in the statefile: `cos status` lists forks, `cos down` names the survivors, and `cos down -f` reaps them. Otherwise destroy it yourself with `createos sandbox rm -y <id>`.
+- A fork is **not** tracked as the project box, so `cos down` leaves it running. It _is_ recorded in the statefile: `cos status` lists forks, `cos down` names the survivors, and `cos down -f` reaps them. Otherwise destroy it yourself with `createos sandbox rm -y <id>`.
 - **Mounted disks do not carry across a fork.** If the source box had an S3 disk attached, re-attach it on the clone.
 
 ## Images: built-in rootfs and custom templates
 
 Built-ins are kept warm on the hosts, so they boot with no image pull:
 
-| Rootfs | Notes |
-|---|---|
-| `devbox:1` | Debian, batteries included, the default — has `sshd`, which `sync` and the editor path need |
-| `ubuntu:26.04` | plain Ubuntu |
-| `debian:13` | trixie |
-| `alpine:3.20` | musl + busybox, far smaller; expect glibc-linked binaries and wheels not to work |
+| Rootfs         | Notes                                                                                       |
+| -------------- | ------------------------------------------------------------------------------------------- |
+| `devbox:1`     | Debian, batteries included, the default — has `sshd`, which `sync` and the editor path need |
+| `ubuntu:26.04` | plain Ubuntu                                                                                |
+| `debian:13`    | trixie                                                                                      |
+| `alpine:3.20`  | musl + busybox, far smaller; expect glibc-linked binaries and wheels not to work            |
 
 `createos sandbox rootfs` lists what the account can actually boot.
 
@@ -111,7 +111,7 @@ createos sandbox editor --remove <box>    # tear down the ~/.ssh/config entry
 
 It generates a per-box SSH key, starts `sshd` in the box, writes a `~/.ssh/config` block so plain `ssh <alias>` works, and launches the editor pointed at the remote. It needs a rootfs with `sshd` (`devbox:1` has it) and a shape with more than 2 GiB of RAM — language servers OOM on a 1 GiB box.
 
-This is the right tool when the user wants to *work in* the sandbox rather than have an agent drive it. It launches a GUI editor, so it belongs to the user, not to an agent command.
+This is the right tool when the user wants to _work in_ the sandbox rather than have an agent drive it. It launches a GUI editor, so it belongs to the user, not to an agent command.
 
 ## Letting a job end its own box
 
