@@ -1,0 +1,985 @@
+#!/usr/bin/env bash
+# cos — drive a CreateOS sandbox as remote compute for Claude / agents.
+#
+# Patterns:
+#   offload (one-shot, safe): stage a dir → run (keepalive+retry) → pull artifacts → destroy
+#   up/run/sync/down (reusable): a per-repo box + one-way/two-way/mirror file sync
+#
+# `cos` is NOT on PATH by default — run `cos install` once (symlinks into
+# ~/.local/bin), or invoke it by full path: "$CLAUDE_PLUGIN_ROOT/scripts/cos".
+#
+# Subcommands:
+#   cos install [target]                        symlink this script onto PATH (default ~/.local/bin/cos)
+#   cos offload [flags] <local-dir> <cmd>       throwaway box: stage→run→pull→destroy
+#   cos up   [-s][-r][-n][-e|-p|-E][-a]         create/reuse a project box (-a to adopt)
+#   cos run  <cmd>                              run in the project box (keepalive)
+#   cos sync [-2|-M][-x] <local-dir> [remote]   start file sync into the project box (bg)
+#   cos pause | cos resume                      park the warm box at zero compute cost / bring it back
+#   cos template submit <name> [-f Dockerfile]  build a custom rootfs (bake the toolchain once)
+#   cos down [-f]                               stop sync + destroy box + clear state (-f reaps forks)
+#   cos status                                  show active box + sync state
+#
+# Driver is the authed `createos` CLI. `createos sandbox create` renders a TTY
+# spinner even under `-o json`, so every create tags a unique --name (≤22 chars,
+# CreateOS cap) and resolves the id from `createos -o json sandbox ls`.
+set -euo pipefail
+
+CLI=${COS_CLI:-createos}
+CLI_INSTALL_URL_DEFAULT=https://raw.githubusercontent.com/NodeOps-app/createos-cli/main/install.sh
+CLI_INSTALL_URL=${COS_CLI_INSTALL_URL:-$CLI_INSTALL_URL_DEFAULT}
+STATE_DIR=${COS_STATE_DIR:-${XDG_CACHE_HOME:-$HOME/.cache}/createos-sandbox}
+mkdir -p "$STATE_DIR"
+
+proj_key(){ local root; root=$(git rev-parse --show-toplevel 2>/dev/null || pwd)
+  if command -v shasum >/dev/null 2>&1; then printf '%s' "$root" | shasum | cut -c1-12
+  elif command -v sha1sum >/dev/null 2>&1; then printf '%s' "$root" | sha1sum | cut -c1-12
+  else printf '%s' "$root" | sha256sum | cut -c1-12; fi; }
+STATE="$STATE_DIR/$(proj_key).json"
+TUNLIST="${STATE%.json}.tunnels"
+
+die(){ echo "cos: $*" >&2; exit 1; }
+have(){ command -v "$1" >/dev/null 2>&1; }
+numeric(){ case "$1" in ''|*[!0-9]*) return 1;; *) return 0;; esac; }
+
+# big / regenerable dirs never worth copying laptop→box (applies to offload upload AND sync)
+DEFAULT_EXCLUDES=(.git target node_modules __pycache__ .venv .mypy_cache .pytest_cache
+                  .gradle .cargo/registry dist build .next .turbo '*.gif' '*.mp4' '*.mov' '*.zst')
+strip_ansi(){ perl -pe 's/\e\[[0-9;?]*[ -\/]*[@-~]//g' 2>/dev/null || cat; }
+
+# ── long-option normalizer (getopts is short-only; translate --foo → -f) ──────
+NORMA=()
+_mapl(){ case "$1" in
+  --shape) echo -s;; --rootfs) echo -r;; --out|--output) echo -o;; --name) echo -n;;
+  --egress) echo -e;; --egress-preset) echo -p;; --egress-all) echo -E;; --adopt) echo -a;;
+  --exclude) echo -x;; --keep-on-fail) echo -K;; --swap) echo -w;;
+  --two-way) echo -2;; --mirror) echo -M;; --forks) echo -f;; *) echo "$1";; esac; }
+_norm(){ NORMA=(); while [ $# -gt 0 ]; do case "$1" in
+    --) shift; NORMA+=(-- "$@"); break;;
+    --*=*) NORMA+=("$(_mapl "${1%%=*}")" "${1#*=}");;
+    --*) NORMA+=("$(_mapl "$1")");;
+    *) NORMA+=("$1");; esac; shift; done; }
+
+# ── egress presets: registries + CDNs a build actually reaches ────────────────
+egress_preset(){ case "$1" in
+  python-uv)  echo "astral.sh releases.astral.sh pypi.org files.pythonhosted.org";;
+  rust-cargo) echo "crates.io static.crates.io index.crates.io static.rust-lang.org cdn.pyke.io";;
+  npm)        echo "registry.npmjs.org";;
+  github)     echo "github.com objects.githubusercontent.com raw.githubusercontent.com codeload.github.com";;
+  *) return 1;; esac; }
+
+resolve_id(){ "$CLI" -o json sandbox ls 2>/dev/null | jq -r --arg n "$1" '.[]|select(.name==$n).id' | head -1; }
+box_status(){ "$CLI" -o json sandbox ls 2>/dev/null | jq -r --arg i "$1" '.[]|select(.id==$i)|.status'; }
+
+# A box idles into `paused` after 30m (auto-pause), and the API still holds its name.
+# Treat paused as live: it is reusable (resume it) and it blocks a same-name create.
+box_live(){ case "$(box_status "$1")" in running|paused) return 0;; *) return 1;; esac; }
+box_resume_if_paused(){ [ "$(box_status "$1")" = paused ] || return 0
+  echo "cos: resuming paused box $1…" >&2
+  "$CLI" sandbox resume "$1" >/dev/null 2>&1 || die "resume of $1 failed — try: createos sandbox resume $1"
+  wait_running "$1" 30 || die "box $1 did not reach running after resume"; }
+
+# poll until the box is running (race guard before first push/exec)
+wait_running(){ local id=$1 to=${2:-30} i s
+  for ((i=0;i<to;i++)); do
+    s=$("$CLI" -o json sandbox ls 2>/dev/null | jq -r --arg i "$id" '.[]|select(.id==$i)|.status')
+    [ "$s" = running ] && return 0
+    sleep 1
+  done
+  return 1
+}
+
+create_box(){ # $1=name $2=shape $3=rootfs ; extra --egress in COS_EGRESS array
+  local name=$1 shape=$2 rootfs=$3
+  local args=(sandbox create --name "$name" --shape "$shape" --rootfs "$rootfs" --auto-pause 30m)
+  [ -n "${COS_NET:-}" ] && args+=(--network "${COS_NET}")
+  [ "${#COS_EGRESS[@]}" -gt 0 ] && args+=("${COS_EGRESS[@]}")
+  [ "${#COS_EGRESS[@]}" -eq 0 ] && echo "cos: ⚠ egress UNRESTRICTED — box can reach any host (restrict with -p <preset> or -e <domain>)" >&2
+  if ! NO_COLOR=1 TERM=dumb "$CLI" "${args[@]}" >"$STATE_DIR/last-create.log" 2>&1; then
+    local err; err=$(strip_ansi <"$STATE_DIR/last-create.log" | tr -d '\r' \
+      | grep -iE 'not allowed|no space|invalid|denied|quota|exceed|error|fail' | tail -1)
+    if printf '%s' "$err" | grep -q 'choices:'; then
+      local choices; choices=$(printf '%s' "$err" | sed -E 's/.*choices: ?\[([^]]*)\].*/\1/')
+      die "shape '$shape' not allowed on your plan. Allowed: $choices  (set with -s; list via 'createos sandbox shapes')"
+    fi
+    [ -n "$err" ] && die "create failed: $err"
+    die "create failed for $name — see $STATE_DIR/last-create.log"
+  fi
+  local id; id=$(resolve_id "$name"); [ -n "$id" ] && [ "$id" != null ] || die "could not resolve $name"
+  printf '%s' "$id"
+}
+
+# ── state lock ────────────────────────────────────────────────────────────────
+# Concurrent agents in one project share $STATE. Without a lock, `up` (read →
+# create → write) races `down` (read → destroy → unlink) and boxes leak or get
+# destroyed out from under a live sync. mkdir is the portable atomic primitive —
+# `flock(1)` is absent on macOS. Reentrant: `up`/`down` hold it across their
+# whole read-modify-write, and the `state_set` calls nested inside just bump depth.
+LOCK="${STATE%.json}.lock"
+LOCK_DEPTH=0
+lock_state(){
+  [ "$LOCK_DEPTH" -gt 0 ] && { LOCK_DEPTH=$((LOCK_DEPTH+1)); return 0; }
+  local i=0 holder holder2
+  until mkdir "$LOCK" 2>/dev/null; do
+    holder=$(cat "$LOCK/pid" 2>/dev/null || true)
+    if [ -n "$holder" ] && ! kill -0 "$holder" 2>/dev/null; then
+      # Re-read after a beat before stealing: the holder may have exited cleanly and
+      # a third process may already hold a fresh lock. Steal only if the pid file
+      # still names the same dead process — a live successor writes its own pid, and
+      # a successor mid-acquire leaves it empty. Either way the pid changes and we back off.
+      sleep 0.2; holder2=$(cat "$LOCK/pid" 2>/dev/null || true)
+      if [ "$holder" = "$holder2" ] && ! kill -0 "$holder" 2>/dev/null; then
+        echo "cos: clearing stale lock from dead pid $holder" >&2; rm -rf "$LOCK"; continue
+      fi
+    fi
+    i=$((i+1)); [ "$i" -ge 300 ] && die "state lock busy 30s (pid ${holder:-?}) — stale? rm -rf $LOCK"
+    sleep 0.1
+  done
+  echo $$ > "$LOCK/pid"
+  LOCK_DEPTH=1
+  trap unlock_state EXIT INT TERM
+}
+unlock_state(){
+  [ "$LOCK_DEPTH" -le 0 ] && return 0
+  LOCK_DEPTH=$((LOCK_DEPTH-1))
+  [ "$LOCK_DEPTH" -le 0 ] && rm -rf "$LOCK" 2>/dev/null
+  return 0
+}
+
+state_get(){ [ -f "$STATE" ] && jq -r --arg k "$1" '.[$k] // empty' "$STATE" 2>/dev/null || true; }
+state_set(){ lock_state; local tmp; tmp=$(mktemp); [ -f "$STATE" ] || echo '{}' > "$STATE"
+  local jqargs=() prog='.'
+  while [ $# -ge 2 ]; do jqargs+=(--arg "k$#" "$1" --arg "v$#" "$2"); prog="$prog | .[\$k$#]=\$v$#"; shift 2; done
+  jq "${jqargs[@]}" "$prog" "$STATE" > "$tmp" && mv "$tmp" "$STATE"
+  unlock_state
+}
+
+# ── set up a swapfile in-box (OOM headroom for compiled-extension builds) ──────
+setup_swap(){ local id=$1 gb=$2
+  echo "cos: ensuring ${gb}G swap in box…" >&2
+  "$CLI" sandbox exec "$id" -- bash -lc "
+    swapon --show 2>/dev/null | grep -q /cos.swap && { free -m | awk '/Swap/{print \"swap MB: \"\$2}'; exit 0; }
+    ( fallocate -l ${gb}G /cos.swap 2>/dev/null || dd if=/dev/zero of=/cos.swap bs=1M count=\$(( ${gb}*1024 )) status=none 2>/dev/null ) \
+      && chmod 600 /cos.swap && mkswap /cos.swap >/dev/null 2>&1 && swapon /cos.swap 2>/dev/null \
+      && free -m | awk '/Swap/{print \"swap MB: \"\$2}' \
+      || echo 'swap setup failed (continuing without swap)'
+  " 2>&1 | sed 's/^/cos: /' >&2 || true
+}
+
+# ── run a command in-box with keepalive + transient-retry ─────────────────────
+# Detaches the real command (survives stream death), then a heartbeat watcher
+# tails it. If the watch stream drops mid-build, the build keeps running on the
+# box and the watcher re-attaches. Sets BUILD_RC (real exit) or INFRA_FAIL=1.
+# shellcheck disable=SC2016  # remote scripts are single-quoted on purpose ($ stays remote)
+run_keepalive(){ local id=$1 cmd=$2 wd=${3:-} llog=${4:-$STATE_DIR/last-exec.log}; BUILD_RC=""; INFRA_FAIL=0
+  local b64; b64=$(printf '%s' "$cmd" | base64 | tr -d '\n')
+  # start: decode cmd, run detached, record pid; write exit code to /tmp/.cos-run.rc
+  local runner='CMD=$(printf %s "$1" | base64 -d); cd "${2:-$HOME}" 2>/dev/null || cd /; rm -f /tmp/.cos-run.rc /tmp/.cos-run.pid; nohup bash -c '\''bash -lc "$0"; echo $? > /tmp/.cos-run.rc'\'' "$CMD" >/tmp/.cos-run.log 2>&1 </dev/null & echo $! >/tmp/.cos-run.pid; sleep 0.3; echo "[cos] started $(cat /tmp/.cos-run.pid)"'
+  "$CLI" sandbox exec "$id" -- bash -lc "$runner" _ "$b64" "$wd" >/dev/null 2>&1 \
+    || { echo "cos: failed to start remote command" >&2; INFRA_FAIL=1; return 1; }
+
+  local watch='p=$(cat /tmp/.cos-run.pid 2>/dev/null); [ -n "$p" ] || { echo "[cos] no pidfile"; exit 0; }; while kill -0 "$p" 2>/dev/null; do echo "[cos hb $(date -u +%H:%M:%S)]"; tail -n 2 /tmp/.cos-run.log 2>/dev/null; sleep 10; done; rc=$(cat /tmp/.cos-run.rc 2>/dev/null); echo "[cos done rc=${rc:-?}]"; tail -n 40 /tmp/.cos-run.log 2>/dev/null'
+  local tries=0 max=6 rc alive
+  while :; do
+    set +e
+    "$CLI" sandbox exec --stream "$id" -- bash -lc "$watch" 2>&1 | tee "$llog"
+    set -e
+    rc=$("$CLI" sandbox exec "$id" -- bash -c 'cat /tmp/.cos-run.rc 2>/dev/null' 2>/dev/null | tr -dc '0-9' | head -c4 || true)
+    [ -n "$rc" ] && { BUILD_RC=$rc; return 0; }
+    tries=$((tries+1)); [ "$tries" -ge "$max" ] && { INFRA_FAIL=1; return 1; }
+    alive=$("$CLI" sandbox exec "$id" -- bash -lc 'p=$(cat /tmp/.cos-run.pid 2>/dev/null); { [ -n "$p" ] && kill -0 "$p" 2>/dev/null && echo ALIVE; } || echo DEAD' 2>/dev/null || true)
+    if printf '%s' "$alive" | grep -q ALIVE; then
+      echo "cos: watch stream dropped (attempt $tries/$max) — build still running, re-attaching…" >&2
+      sleep 3; continue
+    fi
+    INFRA_FAIL=1; return 1   # build process gone with no exit code → infra failure
+  done
+}
+
+# ─────────────────────────────────────────────────────────────── one-shot offload
+OFFLOAD_ID=""; KEEP=0
+on_offload_exit(){ [ -n "$OFFLOAD_ID" ] || return 0
+  [ "$KEEP" = 1 ] && return 0
+  "$CLI" sandbox rm -y "$OFFLOAD_ID" >/dev/null 2>&1 && echo "cos: destroyed $OFFLOAD_ID" >&2 || true; }
+
+cmd_offload(){
+  _norm "$@"; set -- ${NORMA[@]+"${NORMA[@]}"}
+  local shape=s-1vcpu-1gb rootfs=devbox:1 out="" swap="" keep_on_fail=0 egress_all=0
+  COS_EGRESS=(); local -a excl=() _d; local OPTIND=1 o doms d
+  while getopts "s:r:e:o:p:x:w:EKh" o; do case $o in
+    s) shape=$OPTARG;; r) rootfs=$OPTARG;; o) out=$OPTARG;; w) swap=$OPTARG;;
+    e) COS_EGRESS+=(--egress "$OPTARG");;
+    p) doms=$(egress_preset "$OPTARG") || die "unknown egress preset '$OPTARG' (have: python-uv rust-cargo npm github)"
+       read -ra _d <<<"$doms"; for d in "${_d[@]}"; do COS_EGRESS+=(--egress "$d"); done;;
+    x) excl+=("$OPTARG");;
+    E) egress_all=1;;
+    K) keep_on_fail=1;;
+    h) offload_usage; exit 0;;
+    *) offload_usage >&2; exit 2;; esac; done
+  shift $((OPTIND-1))
+  # no args (e.g. empty slash-command injection) → usage + exit 0, never die
+  if [ $# -lt 2 ]; then offload_usage; exit 0; fi
+  local dir=$1 cmd=$2
+  [ -d "$dir" ] || die "no such dir: $dir"
+  [ "$egress_all" = 1 ] && COS_EGRESS=()
+
+  # warn: heavy compiled build on a small box
+  local heavy=0 small=0
+  case "$cmd" in *cargo*|*maturin*|*torch*|*"pip install"*|*"uv sync"*|*"uv run"*|*pyo3*) heavy=1;; esac
+  case "$shape" in *256mb|*512mb|*-1gb) small=1;; esac
+  [ "$heavy" = 1 ] && [ "$small" = 1 ] && [ -z "$swap" ] && \
+    echo "cos: ⚠ heavy build on small box ($shape) — risk of OOM/ENOSPC. Try -s s-2vcpu-2gb or --swap 4." >&2
+
+  local name="cos-o-$$-${RANDOM}"
+  OFFLOAD_ID=$(create_box "$name" "$shape" "$rootfs")
+  KEEP=0; trap on_offload_exit EXIT
+  echo "cos: $OFFLOAD_ID ($name, $shape/$rootfs)" >&2
+  wait_running "$OFFLOAD_ID" 30 || die "box $OFFLOAD_ID not running after 30s"
+
+  # stage with excludes (.git/build artifacts/large media skipped by default)
+  local -a tarx=(); local p
+  for p in "${DEFAULT_EXCLUDES[@]}" ${excl[@]+"${excl[@]}"}; do tarx+=(--exclude "$p"); done
+  echo "cos: staging $dir → box:/work (default excludes + ${excl[*]:-none})" >&2
+  tar "${tarx[@]}" -c -C "$dir" . | "$CLI" sandbox push "$OFFLOAD_ID" - /work.tar >/dev/null 2>&1 || die "push failed"
+  "$CLI" sandbox exec "$OFFLOAD_ID" -- bash -lc 'mkdir -p /work && tar -C /work -xf /work.tar && rm -f /work.tar && echo ok' >/dev/null 2>&1 || die "extract failed"
+
+  [ -n "$swap" ] && setup_swap "$OFFLOAD_ID" "$swap"
+
+  run_keepalive "$OFFLOAD_ID" "$cmd" /work || true
+  local rc=${BUILD_RC:-1}
+  if [ "${INFRA_FAIL:-0}" = 1 ]; then
+    KEEP=1; rc=1
+    echo "cos: ⚠ infra/stream failure — box kept so the build cache survives." >&2
+    echo "cos:   reconnect: createos sandbox exec --stream $OFFLOAD_ID -- bash -lc 'tail -f /tmp/.cos-run.log'" >&2
+    echo "cos:   destroy:   createos sandbox rm -y $OFFLOAD_ID" >&2
+  elif [ "$rc" != 0 ] && [ "$keep_on_fail" = 1 ]; then
+    KEEP=1
+    echo "cos: command exited $rc — box kept (--keep-on-fail). destroy: createos sandbox rm -y $OFFLOAD_ID" >&2
+  fi
+
+  if [ -n "$out" ]; then
+    echo "cos: pulling /work/$out → $dir/" >&2
+    if "$CLI" sandbox exec "$OFFLOAD_ID" -- bash -lc "cd /work && tar -c $out" 2>/dev/null | tar -x -C "$dir"; then :; else
+      echo "cos: ⚠ pull of '$out' FAILED — artifacts NOT retrieved (does '$out' exist under /work?). Box is about to be destroyed." >&2
+    fi
+  fi
+  return "$rc"
+}
+offload_usage(){ cat <<'EOF'
+cos offload — run a command in a throwaway sandbox (stage → run → pull → destroy).
+  cos offload [flags] <local-dir> <cmd>
+flags:
+  -s shape   -r rootfs   -o out (tar dir to pull back)   -w GB (swap)   -K keep box on failure
+  -e <domain>            allow one egress domain (repeatable)
+  -p <preset>            egress preset: python-uv | rust-cargo | npm | github (repeatable, composes with -e)
+  -E                     unrestricted egress (trusted offload)
+  -x <glob>              extra upload exclude (repeatable; .git/target/node_modules/__pycache__/.venv/media excluded by default)
+example:
+  cos offload -p python-uv -p rust-cargo -x target . 'uv sync --frozen --group dev && uv run pytest -q'
+EOF
+}
+
+# ───────────────────────────────────────────────────────────── reusable project box
+cmd_up(){
+  _norm "$@"; set -- ${NORMA[@]+"${NORMA[@]}"}
+  local shape=s-2vcpu-2gb rootfs=devbox:1 name="" egress_all=0 adopt=0; COS_EGRESS=(); local -a _d; local OPTIND=1 o doms d
+  while getopts "s:r:n:e:p:Eah" o; do case $o in
+    s) shape=$OPTARG;; r) rootfs=$OPTARG;; n) name=$OPTARG;;
+    e) COS_EGRESS+=(--egress "$OPTARG");;
+    p) doms=$(egress_preset "$OPTARG") || die "unknown egress preset '$OPTARG'"
+       read -ra _d <<<"$doms"; for d in "${_d[@]}"; do COS_EGRESS+=(--egress "$d"); done;;
+    E) egress_all=1;;
+    a) adopt=1;;
+    h) echo "cos up [-s shape] [-r rootfs] [-n name] [-e dom|-p preset|-E] [-a]"; exit 0;;
+    *) die "usage: cos up [-s shape] [-r rootfs] [-n name] [-e dom|-p preset|-E] [-a]";; esac; done
+  [ "$egress_all" = 1 ] && COS_EGRESS=()
+  lock_state   # held across check → create → write; released on return via EXIT trap
+  local cur curname; cur=$(state_get id); curname=$(state_get name)
+  if [ -n "$cur" ] && box_live "$cur"; then
+    # Reuse only what was asked for. An explicit -n naming a different box must not
+    # silently hand back the current one — state holds a single project box, so the
+    # caller has to tear the old one down rather than orphan it.
+    [ -z "$name" ] || [ "$name" = "$curname" ] || die "project box $cur ($curname) is already up — one project box per directory.
+  Use it:      cos run …
+  Replace it:  cos down && cos up -n $name"
+    box_resume_if_paused "$cur"
+    echo "cos: reusing $cur ($curname)" >&2; unlock_state; return 0
+  fi
+  [ -n "$name" ] || name="cos-proj-$(proj_key)"
+  # A live box under our name with no local state was created by someone else
+  # (other checkout, other agent, by hand). Adopting it silently means `cos down`
+  # later destroys a box this project never created — require explicit consent,
+  # and mark it unowned so `down` refuses to destroy it.
+  local existing; existing=$(resolve_id "$name")
+  if [ -n "$existing" ] && [ "$existing" != null ] && box_live "$existing"; then
+    [ "$adopt" = 1 ] || die "box '$name' ($existing, $(box_status "$existing")) already exists, but this project has no state for it.
+  It was not created by this checkout — 'cos down' would destroy a box you don't own.
+  Adopt it:   cos up -a          (adopted boxes are never destroyed by 'cos down')
+  Destroy it: createos sandbox rm -y $existing"
+    box_resume_if_paused "$existing"
+    state_set id "$existing" name "$name" shape "$shape" owned 0
+    echo "cos: adopted existing box $existing ($name) — 'cos down' will NOT destroy it" >&2
+    unlock_state; return 0
+  fi
+  local id; id=$(create_box "$name" "$shape" "$rootfs")
+  state_set id "$id" name "$name" shape "$shape" owned 1
+  echo "cos: project box up: $id ($name, $shape)" >&2
+  unlock_state
+}
+
+cmd_run(){
+  # `run` takes the command as a plain string — there is no `--` separator and no
+  # per-command flags. Catch the help probes explicitly; otherwise they get sent to
+  # the box as a command and come back as a confusing shell error.
+  case "${1:-}" in
+    -h|--help|"") echo "cos run <cmd>   run a command in the project box (keepalive, state persists)"
+                  echo "  the command is ONE string, no '--' separator:  cos run 'npm ci && npm test'"
+                  echo "  one-shot work in a throwaway box instead:      cos offload [flags] <dir> <cmd>"
+                  return 0;;
+  esac
+  local id; id=$(state_get id); [ -n "$id" ] || die "no active box — run 'cos up' first"
+  # An idle box auto-pauses. Say so plainly instead of letting wait_running time
+  # out into a generic "not running" — and leave the resume as the caller's call,
+  # since resuming restarts compute billing.
+  [ "$(box_status "$id")" = paused ] && die "box $id is paused (idle auto-pause, or 'cos pause') — 'cos resume' first"
+  wait_running "$id" 15 || die "box $id not running"
+  run_keepalive "$id" "$*" "$(state_get sync_remote)" || true
+  local rc=${BUILD_RC:-1}
+  [ "${INFRA_FAIL:-0}" = 1 ] && { echo "cos: stream failure; build may still be running. Check: cos run 'cat /tmp/.cos-run.rc'" >&2; rc=1; }
+  return "$rc"
+}
+
+cmd_sync(){
+  _norm "$@"; set -- ${NORMA[@]+"${NORMA[@]}"}
+  local id; id=$(state_get id); [ -n "$id" ] || die "no active box — run 'cos up' first"
+  local mode=one-way; local -a excl=(); local OPTIND=1 o
+  while getopts "2Mx:h" o; do case $o in
+    2) mode=two-way;; M) mode=mirror;; x) excl+=(--exclude "$OPTARG");;
+    h) echo "cos sync [-2|-M] [-x glob]... <local-dir> [remote-dir]"; exit 0;;
+    *) die "usage: cos sync [-2|-M] [-x glob]... <local-dir> [remote-dir]";; esac; done
+  shift $((OPTIND-1))
+  local dir=${1:?local-dir required}; local remote=${2:-/work}
+  [ -d "$dir" ] || die "no such dir: $dir"
+  dir=$(cd "$dir" && pwd -P) || die "cannot resolve local dir: $dir"
+  case "$dir" in "$HOME"/*|/tmp/*|/private/tmp/*) :;; *) die "sync local dir must resolve under \$HOME or /tmp: $dir";; esac
+  case "$remote" in
+    *..*) die "remote path must not contain '..': $remote";;
+    /|/etc|/etc/*|/usr|/usr/*|/bin|/bin/*|/sbin|/sbin/*|/lib|/lib/*|/boot|/boot/*|/dev|/dev/*|/proc|/proc/*|/sys|/sys/*|/root|/root/*|/var|/var/*) die "refusing sync to system dir: $remote";;
+  esac
+
+  # `pwd -P` above resolves symlinks so the guard can't be walked around — but on
+  # macOS /tmp IS a symlink to /private/tmp, and createos-cli's own guard accepts
+  # only $HOME or /tmp. Left as-is, every sync of a /tmp path is rejected by the CLI
+  # with a confusing "must be under $HOME or /tmp" about a path the user never typed.
+  # Validate the resolved form, hand the CLI the canonical one.
+  # Gate on /tmp and /private/tmp genuinely being the same directory. On Linux they
+  # are distinct, and rewriting blind would point the CLI at a different tree — which
+  # under `-M` (mirror) deletes box-side files based on the wrong source.
+  local cli_dir=$dir
+  if [ "$(cd /tmp 2>/dev/null && pwd -P)" = /private/tmp ]; then
+    case "$dir" in /private/tmp|/private/tmp/*) cli_dir="/tmp${dir#/private/tmp}";; esac
+  fi
+
+  local -a args=(sandbox sync --local "$cli_dir" --remote "$remote" -y)
+  if "$CLI" sandbox sync --help 2>/dev/null | grep -q -- '--mode'; then
+    args+=(--mode "$mode")
+    local p; for p in "${DEFAULT_EXCLUDES[@]}"; do args+=(--exclude "$p"); done   # skip big/regenerable dirs
+    [ "${#excl[@]}" -gt 0 ] && args+=("${excl[@]}")
+  else
+    [ "$mode" != two-way ] && echo "cos: ⚠ installed createos CLI lacks --mode; falling back to TWO-WAY (box writes bleed back). Upgrade the CLI for one-way/mirror." >&2
+    echo "cos: ⚠ installed CLI lacks --exclude; syncing WITHOUT default excludes (node_modules/target/… WILL copy). Upgrade the CLI." >&2
+    mode=two-way
+  fi
+  case "$mode" in
+    one-way) echo "cos: one-way sync $dir → $id:$remote (laptop wins; box changes NOT pulled back)" >&2;;
+    two-way) echo "cos: ⚠ two-way sync — sandbox-side writes (build output, deps) flow BACK to $dir" >&2;;
+    mirror)  echo "cos: ⚠ mirror — files on the box not present in $dir will be DELETED" >&2;;
+  esac
+  echo "cos: first run downloads Mutagen (~60-90s before edits propagate); .git + node_modules/target/.venv/… excluded by default (build deps INSIDE the box via 'cos run')" >&2
+  # The sandbox positional goes LAST: it was missing entirely (every sync died with
+  # "please provide a sandbox ID or name"), and it has to follow the flags because
+  # createos-cli stops parsing flags at the first positional — same trap as `tunnel`.
+  args+=("$id")
+  nohup "$CLI" "${args[@]}" >"$STATE_DIR/sync-$id.log" 2>&1 &
+  state_set sync_pid "$!" sync_dir "$dir" sync_remote "$remote" sync_mode "$mode"
+  echo "cos: sync pid $! ($mode, log: $STATE_DIR/sync-$id.log)" >&2
+}
+
+stop_tunnels(){ [ -f "$TUNLIST" ] || return 0; local pid rest
+  while read -r pid rest; do [ -n "$pid" ] && kill "$pid" 2>/dev/null && echo "cos: stopped tunnel $pid ($rest)" >&2 || true; done < "$TUNLIST"
+  rm -f "$TUNLIST"; }
+
+cmd_down(){
+  _norm "$@"; set -- ${NORMA[@]+"${NORMA[@]}"}
+  local destroy_forks=0; local OPTIND=1 o
+  while getopts "fh" o; do case $o in
+    f) destroy_forks=1;;
+    h) echo "cos down [-f]   (-f also destroys forks taken from this box)"; exit 0;;
+    *) die "usage: cos down [-f]";; esac; done
+  lock_state   # held across read → destroy → unlink, so a concurrent `up` can't interleave
+  local id pid owned forks f; id=$(state_get id); pid=$(state_get sync_pid); owned=$(state_get owned)
+  forks=$(state_get fork_ids)
+  [ -n "$pid" ] && kill "$pid" 2>/dev/null && echo "cos: stopped sync $pid" >&2 || true
+  stop_tunnels
+  [ -n "$(state_get cluster_net)" ] && cluster_down
+  if [ -n "$forks" ]; then
+    if [ "$destroy_forks" = 1 ]; then
+      for f in $forks; do "$CLI" sandbox rm -y "$f" >/dev/null 2>&1 && echo "cos: destroyed fork $f" >&2 || true; done
+    else
+      echo "cos: ⚠ forks of this box survive (independent clones): $forks" >&2
+      echo "cos:   reap them: cos down -f   |   createos sandbox rm -y $forks" >&2
+    fi
+  fi
+  # pre-`owned` state files predate ownership tracking; they only ever held boxes
+  # `up` created, so absent flag ⇒ owned.
+  if [ -n "$id" ]; then
+    if [ "${owned:-1}" = 0 ]; then
+      echo "cos: ⚠ $id was adopted, not created here — NOT destroying it." >&2
+      echo "cos:   destroy it yourself: createos sandbox rm -y $id" >&2
+    else
+      "$CLI" sandbox rm -y "$id" >/dev/null 2>&1 && echo "cos: destroyed $id" >&2 || true
+    fi
+  fi
+  rm -f "$STATE"; echo "cos: state cleared" >&2
+  unlock_state
+}
+
+cmd_status(){
+  [ -f "$STATE" ] || { echo "cos: no active box for this project"; return 0; }
+  local id; id=$(state_get id)
+  [ -n "$id" ] && echo "active: $id ($(state_get name))  shape=$(state_get shape)  $([ "$(state_get owned)" = 0 ] && echo '[adopted — down will NOT destroy]' || echo '[created here]')"
+  local forks; forks=$(state_get fork_ids)
+  [ -n "$forks" ] && echo "forks:  $forks  (survive 'cos down'; reap with 'cos down -f')"
+  local pid; pid=$(state_get sync_pid)
+  [ -n "$pid" ] && kill -0 "$pid" 2>/dev/null && echo "sync:   pid $pid  [$(state_get sync_mode)] $(state_get sync_dir) → $(state_get sync_remote)" || echo "sync:   none"
+  if [ -f "$TUNLIST" ]; then echo "tunnels:"
+    while read -r pid rest; do kill -0 "$pid" 2>/dev/null \
+      && echo "  pid $pid  127.0.0.1:${rest%%:*} → box:${rest##*:}" || echo "  (dead $pid $rest)"; done < "$TUNLIST"
+  fi
+  [ -n "$id" ] && "$CLI" -o json sandbox ls 2>/dev/null | jq -r --arg i "$id" '.[]|select(.id==$i)|"status: \(.status)  ip=\(.ip)"' || true
+  [ -n "$(state_get cluster_net)" ] && cluster_ls
+}
+
+# ───────────────────────────────────────── tunnel: box port → local (background)
+cmd_tunnel(){
+  local id; id=$(state_get id); [ -n "$id" ] || die "no active box — run 'cos up' first"
+  local remote=${1:?remote port required (port your service listens on INSIDE the box)}
+  local local_p=${2:-$remote}
+  numeric "$remote"  || die "remote port not numeric: $remote"
+  numeric "$local_p" || die "local port not numeric: $local_p"
+  wait_running "$id" 15 || die "box $id not running"
+  local log="$STATE_DIR/tunnel-$id-$remote.log"
+  # flags MUST precede the <sandbox> positional — createos-cli's tunnel command
+  # stops parsing flags at the first positional arg, so `tunnel <id> --remote X`
+  # drops --remote and dies "--remote <port> is required".
+  nohup "$CLI" sandbox tunnel --remote "$remote" --local "$local_p" "$id" >"$log" 2>&1 &
+  local pid=$!
+  printf '%s %s:%s\n' "$pid" "$local_p" "$remote" >> "$TUNLIST"
+  sleep 1
+  kill -0 "$pid" 2>/dev/null || { echo "cos: tunnel failed to start — see $log" >&2; tail -n 3 "$log" >&2 || true; return 1; }
+  echo "cos: tunnel pid $pid — http://127.0.0.1:$local_p → box:$remote (background; 'cos down' or 'cos status' to manage)" >&2
+}
+
+# ───────────────────────────────────────── expose: public HTTPS URL for a box port
+cmd_expose(){
+  local id; id=$(state_get id); [ -n "$id" ] || die "no active box — run 'cos up' first"
+  local port=${1:?port required (bind your service to 0.0.0.0:<port>)}
+  numeric "$port" || die "port not numeric: $port"
+  "$CLI" sandbox edit "$id" --ingress on >/dev/null 2>&1 || die "failed to enable ingress on $id"
+  local tmpl; tmpl=$("$CLI" -o json sandbox get "$id" 2>/dev/null | jq -r '.ingress_url_template // empty')
+  [ -n "$tmpl" ] || die "ingress enabled but no URL template — check: createos sandbox get $id"
+  local url=${tmpl//<port>/$port}
+  echo "cos: public URL (service MUST bind 0.0.0.0:$port, not 127.0.0.1) — lives while the box does:" >&2
+  echo "$url"
+  # Reachability probe. Ingress 502s until the service actually answers on
+  # 0.0.0.0:$port, so tell the caller now whether the box side is live instead
+  # of letting them discover a 502 in the browser. Non-fatal: the URL is valid
+  # for the box's lifetime and a not-yet-started service may come up later.
+  if have curl; then
+    local code=000 i
+    for i in 1 2 3; do
+      code=$(curl -s -o /dev/null -w '%{http_code}' --max-time 5 "$url" 2>/dev/null)  # curl prints 000 on no-response
+      case $code in 2??|3??|4??) break;; esac
+      [ "$i" -lt 3 ] && sleep 2
+    done
+    case $code in
+      2??|3??|4??) echo "cos: ✓ reachable (HTTP $code)" >&2;;
+      *)           echo "cos: ⚠ ingress on, but nothing answered on 0.0.0.0:$port (HTTP $code) — start the service / rebind it to 0.0.0.0, then reload (URL stays valid)." >&2;;
+    esac
+  fi
+}
+cmd_unexpose(){
+  local id; id=$(state_get id); [ -n "$id" ] || die "no active box — run 'cos up' first"
+  "$CLI" sandbox edit "$id" --ingress off >/dev/null 2>&1 && echo "cos: ingress disabled for $id" >&2 || die "failed to disable ingress"
+}
+
+# ───────────────────────────── cluster: N boxes on one private network (by-name DNS)
+cluster_ls(){
+  local net; net=$(state_get cluster_net); [ -n "$net" ] || { echo "cos: no cluster for this project"; return 0; }
+  echo "cluster net: $net  members: $(state_get cluster_names)"
+  "$CLI" -o json sandbox network show "$net" 2>/dev/null \
+    | jq -r '.members[]? | "  \(.name // .sandbox_id)  ip=\(.ip // "?")  \(.status // "?")"' 2>/dev/null || true
+}
+cluster_up(){
+  _norm "$@"; set -- ${NORMA[@]+"${NORMA[@]}"}
+  local shape=s-1vcpu-1gb rootfs=devbox:1 egress_all=0; COS_EGRESS=(); local -a _d; local OPTIND=1 o doms d
+  while getopts "s:r:e:p:Eh" o; do case $o in
+    s) shape=$OPTARG;; r) rootfs=$OPTARG;;
+    e) COS_EGRESS+=(--egress "$OPTARG");;
+    p) doms=$(egress_preset "$OPTARG") || die "unknown egress preset '$OPTARG'"
+       read -ra _d <<<"$doms"; for d in "${_d[@]}"; do COS_EGRESS+=(--egress "$d"); done;;
+    E) egress_all=1;;
+    h) echo "cos cluster up <N> [-s shape] [-r rootfs] [-e dom|-p preset|-E]"; exit 0;;
+    *) die "usage: cos cluster up <N> [-s shape] [-r rootfs] [-e dom|-p preset|-E]";; esac; done
+  shift $((OPTIND-1))
+  local n=${1:?count required: cos cluster up <N>}
+  numeric "$n" || die "count not numeric: $n"
+  [ "$n" -ge 2 ] || die "cluster needs N≥2 (use 'cos up' for one box)"
+  [ "$n" -le 8 ] || die "refusing N>8 — external keys allow 2 running at once; pick a small N and budget quota"
+  [ "$egress_all" = 1 ] && COS_EGRESS=()
+  [ -z "$(state_get cluster_net)" ] || die "cluster already up ('$(state_get cluster_net)') — 'cos cluster down' first"
+  local net; net="cos-net-$(proj_key)"
+  "$CLI" sandbox network create "$net" >/dev/null 2>&1 || true   # tolerate 'already exists'
+  local ids="" names="" i nm boxid
+  export COS_NET="$net"   # create_box picks this up and adds --network
+  for ((i=1;i<=n;i++)); do
+    nm="cos-cl-$(proj_key)-$i"
+    boxid=$(create_box "$nm" "$shape" "$rootfs") || die "failed to create $nm"
+    ids="$ids $boxid"; names="$names $nm"
+    echo "cos: member $i/$n up: $boxid ($nm)" >&2
+  done
+  unset COS_NET
+  state_set cluster_net "$net" cluster_ids "${ids# }" cluster_names "${names# }"
+  # Peers resolve on the FQDN only — the bare short name is NXDOMAIN in the guest.
+  echo "cos: cluster '$net' up ($n boxes) — peers reach each other by name, e.g. curl http://cos-cl-$(proj_key)-2.fc.local:PORT" >&2
+  cluster_ls
+}
+cluster_run(){
+  local net; net=$(state_get cluster_net); [ -n "$net" ] || die "no cluster — 'cos cluster up <N>' first"
+  local all=0; case "${1:-}" in -a|--all) all=1; shift;; esac
+  local -a IDA NMA; read -ra IDA <<<"$(state_get cluster_ids)"; read -ra NMA <<<"$(state_get cluster_names)"
+  if [ "$all" = 1 ]; then
+    local cmd="$*"; [ -n "$cmd" ] || die "command required"
+    local k agg=0; for k in "${!IDA[@]}"; do
+      echo "cos: ── ${NMA[$k]} (${IDA[$k]}) ──" >&2
+      run_keepalive "${IDA[$k]}" "$cmd" "" || true
+      { [ "${INFRA_FAIL:-0}" = 1 ] || [ "${BUILD_RC:-1}" != 0 ]; } && agg=1
+    done
+    return "$agg"
+  fi
+  local target=${1:?target required: member index (1..N) or name, or -a for all}; shift
+  local cmd="$*"; [ -n "$cmd" ] || die "command required"
+  local id="" k
+  if numeric "$target"; then [ "$target" -ge 1 ] || die "member index must be ≥1 (have: $(state_get cluster_names))"; id="${IDA[$((target-1))]:-}"
+  else for k in "${!NMA[@]}"; do [ "${NMA[$k]}" = "$target" ] && id="${IDA[$k]}"; done; fi
+  [ -n "$id" ] || die "member '$target' not in cluster ($(state_get cluster_names))"
+  wait_running "$id" 15 || die "member $id not running"
+  run_keepalive "$id" "$cmd" "" || true
+  return "${BUILD_RC:-1}"
+}
+cluster_down(){
+  local net ids id; net=$(state_get cluster_net); ids=$(state_get cluster_ids)
+  [ -n "$net$ids" ] || { echo "cos: no cluster" >&2; return 0; }
+  for id in $ids; do "$CLI" sandbox rm -y "$id" >/dev/null 2>&1 && echo "cos: destroyed $id" >&2 || true; done
+  [ -n "$net" ] && { "$CLI" sandbox network rm "$net" -y >/dev/null 2>&1 && echo "cos: deleted net $net" >&2 || true; }
+  state_set cluster_net "" cluster_ids "" cluster_names ""
+  echo "cos: cluster torn down" >&2
+}
+cmd_cluster(){
+  local action=${1:-}; shift || true
+  case "$action" in
+    up)        cluster_up "$@";;
+    run)       cluster_run "$@";;
+    ls|status) cluster_ls;;
+    down)      cluster_down;;
+    *) die "usage: cos cluster up <N> [-s|-r|-e|-p|-E] | run [<name|index>|-a] <cmd> | ls | down";;
+  esac
+}
+
+# ───────────────────────────── vpn: WireGuard L3 from this machine into private nets
+cmd_vpn(){
+  local sub=${1:-up}; shift || true
+  have wg-quick || die "WireGuard 'wg-quick' missing — install wireguard-tools (macOS: brew install wireguard-tools; Debian: apt install wireguard-tools), then retry"
+  case "$sub" in
+    register) "$CLI" sandbox devices register "$@";;
+    up)  echo "cos: WireGuard up — needs sudo for routes, blocks until Ctrl-C. If it says 'not registered', run: cos vpn register <name>" >&2
+         exec "$CLI" sandbox vpn up;;
+    *) die "usage: cos vpn [up | register [name]]";;
+  esac
+}
+
+# ───────────────────────────── fork: snapshot the project box into an independent clone
+cmd_fork(){
+  local id; id=$(state_get id); [ -n "$id" ] || die "no active project box — 'cos up' first"
+  wait_running "$id" 15 || die "box $id not running"
+  echo "cos: pausing $id to snapshot (brief; needed to fork)…" >&2
+  "$CLI" sandbox pause "$id" >/dev/null 2>&1 || die "pause failed"
+  local before after newid
+  before=$("$CLI" -o json sandbox ls 2>/dev/null | jq -r '.[].id' | sort)
+  echo "cos: forking…" >&2
+  if ! "$CLI" sandbox fork "$id" >"$STATE_DIR/last-fork.log" 2>&1; then
+    "$CLI" sandbox resume "$id" >/dev/null 2>&1 || true
+    die "fork failed — see $STATE_DIR/last-fork.log (project box resumed)"
+  fi
+  after=$("$CLI" -o json sandbox ls 2>/dev/null | jq -r '.[].id' | sort)
+  # brace the expansion: a bare `$id` followed directly by a multibyte char (the
+  # ellipsis) is parsed as part of the variable NAME, so `set -u` kills the script
+  # here — after the fork has already happened, orphaning the clone.
+  echo "cos: resuming project box ${id}…" >&2
+  "$CLI" sandbox resume "$id" >/dev/null 2>&1 || echo "cos: ⚠ resume of $id failed — run 'createos sandbox resume $id'" >&2
+  newid=$(comm -13 <(printf '%s\n' "$before") <(printf '%s\n' "$after") | head -1)
+  [ -n "$newid" ] || { echo "cos: forked, but couldn't auto-resolve the new id — see 'createos sandbox ls'" >&2; return 0; }
+  # A fork is an independent clone, so `down` won't destroy it — but record it, or
+  # nothing ever will and it leaks silently. `down` reports it; `down -f` reaps it.
+  local forks; forks=$(state_get fork_ids)
+  state_set fork_ids "${forks:+$forks }$newid"
+  echo "cos: fork ready: $newid (independent clone; NOT tracked as the project box)" >&2
+  echo "cos:   exec:    createos sandbox exec --stream $newid -- bash -lc '…'" >&2
+  echo "cos:   destroy: createos sandbox rm -y $newid   (or 'cos down -f' to reap forks with the box)" >&2
+  echo "$newid"
+}
+
+# ───────────────────────────── pause/resume: park the warm box at zero compute cost
+# `down` destroys — the next session reinstalls every dependency. `pause` snapshots
+# disk + memory to storage and frees the host, so a box with a warm toolchain costs
+# nothing while idle and comes back with its processes intact. Both operations take
+# ~6-8s end to end here (the CLI polls for the state transition); resume is slower
+# when the snapshot has to be pulled to a host other than the one it was taken on.
+cmd_pause(){
+  case "${1:-}" in -h|--help) echo "cos pause   snapshot the project box; compute billing stops, state survives"; return 0;;
+    ?*) die "cos pause takes no arguments (got '$1')";; esac
+  lock_state   # held across status check → helper teardown → pause, so a concurrent
+               # up/down/sync can't interleave and strand a sync pid we just cleared
+  local id; id=$(state_get id); [ -n "$id" ] || { unlock_state; die "no active project box — 'cos up' first"; }
+  case "$(box_status "$id")" in
+    paused)  :;;   # still tear helpers down: an idle auto-pause leaves them running
+    running) :;;
+    '')      unlock_state; die "box $id no longer exists — 'cos down' to clear stale state";;
+    *)       unlock_state; die "box $id is '$(box_status "$id")' — only a running box can be paused";;
+  esac
+  # A paused box serves no traffic, so a live sync would spin on errors and the
+  # tunnel pids are already dead sockets. Tear both down rather than leave them
+  # half-alive; the caller re-establishes them after resume.
+  local pid; pid=$(state_get sync_pid)
+  [ -n "$pid" ] && kill "$pid" 2>/dev/null && echo "cos: stopped sync $pid (re-run 'cos sync' after resume)" >&2 || true
+  state_set sync_pid ""
+  stop_tunnels
+  if [ "$(box_status "$id")" = paused ]; then
+    echo "cos: $id already paused (helpers torn down)" >&2; unlock_state; return 0
+  fi
+  echo "cos: pausing $id — snapshotting disk+memory, compute billing stops…" >&2
+  "$CLI" sandbox pause "$id" >/dev/null 2>&1 || { unlock_state; die "pause failed — try: createos sandbox pause $id"; }
+  echo "cos: $id paused. Deps, files and disks survive; 'cos resume' (or 'cos up') brings it back." >&2
+  unlock_state
+}
+
+cmd_resume(){
+  case "${1:-}" in -h|--help) echo "cos resume   restore the paused project box (restarts compute billing)"; return 0;;
+    ?*) die "cos resume takes no arguments (got '$1')";; esac
+  local id; id=$(state_get id); [ -n "$id" ] || die "no active project box — 'cos up' first"
+  case "$(box_status "$id")" in
+    running) echo "cos: $id already running" >&2; return 0;;
+    paused)  :;;
+    '')      die "box $id no longer exists — 'cos down' to clear stale state, then 'cos up'";;
+    *)       die "box $id is '$(box_status "$id")' — cannot resume from that state";;
+  esac
+  box_resume_if_paused "$id"
+  echo "cos: $id running. Re-run 'cos sync' / 'cos tunnel' / 'cos expose' if you had them up." >&2
+}
+
+# ───────────────────────────── template: build a custom rootfs from a Dockerfile
+# Bake the toolchain once instead of reinstalling it on every offload. The build
+# service enforces constraints that are easy to trip and only surface as a 400
+# after upload, so preflight them locally and fail with the actual reason.
+template_validate(){
+  local f=$1 size froms copies
+  [ -f "$f" ] || die "no such Dockerfile: $f"
+  size=$(wc -c <"$f" | tr -d ' ')
+  [ "$size" -le 65536 ] || die "Dockerfile is ${size} bytes — the build service caps source at 64 KiB"
+  # `--` on every grep: a Dockerfile path starting with '-' would otherwise be
+  # consumed as options, silently changing (or skipping) validation.
+  froms=$(grep -ciE -- '^[[:space:]]*FROM[[:space:]]' "$f" || true)
+  [ "$froms" = 1 ] || die "Dockerfile has $froms FROM line(s) — template builds are single-stage, exactly one FROM"
+  if grep -qE -- '^[[:space:]]*[Ff][Rr][Oo][Mm][[:space:]]+.*\$' "$f"; then
+    die "FROM uses a variable — ARG-substituted base images are rejected; write the base image literally"
+  fi
+  copies=$(grep -ciE -- '^[[:space:]]*(COPY|ADD)[[:space:]]' "$f" || true)
+  [ "$copies" = 0 ] || die "Dockerfile has $copies COPY/ADD line(s) — no build context is uploaded, so they cannot work. Fetch what you need inside a RUN instead."
+  echo "cos: Dockerfile preflight ok — single-stage, no COPY/ADD, ${size}B" >&2
+  echo "cos: note — FROM must be an operator-allowlisted base (e.g. nodeops/sandbox:debian); the build rejects anything else." >&2
+}
+
+cmd_template(){
+  local action=${1:-}; shift || true
+  case "$action" in
+    submit|build|create)
+      local name="" file=Dockerfile; local -a pass=()
+      # -f/--file is consumed here so the Dockerfile can be preflighted; the rest passes through
+      while [ $# -gt 0 ]; do
+        case "$1" in
+          -f|--file) file=${2:?path required after -f}; shift 2;;
+          # -f=X / --file=X are valid CLI syntax; without these the wrapper would
+          # preflight the default Dockerfile and submit a different, unvalidated one
+          -f=*|--file=*) file=${1#*=}; shift;;
+          -*)        pass+=("$1"); shift;;
+          *)         if [ -n "$name" ]; then pass+=("$1"); else name=$1; fi; shift;;
+        esac
+      done
+      [ -n "$name" ] || die "usage: cos template submit <name> [-f Dockerfile]"
+      template_validate "$file"
+      echo "cos: submitting '$name' — build is async; logs stream below (2 concurrent builds per account)" >&2
+      # flags before the positional — urfave/cli stops flag parsing at the first
+      # positional arg, the same trap that bit `sandbox tunnel`
+      "$CLI" sandbox template submit -f "$file" ${pass[@]+"${pass[@]}"} "$name"
+      echo "cos: once status is 'ready', boot from it:  cos up -r $name   |   cos offload -r $name . '<cmd>'" >&2;;
+    ls|list)   "$CLI" sandbox template ls "$@";;
+    show|get)  "$CLI" sandbox template show "$@";;
+    logs)      "$CLI" sandbox template logs "$@";;
+    rm|delete) "$CLI" sandbox template rm "$@";;
+    *) die "usage: cos template submit <name> [-f Dockerfile] | ls | show <name> | logs [-f] <name> | rm <name>
+  A custom rootfs is slow on its FIRST boot per host (image fetch) and fast after.
+  Built-ins (devbox:1, ubuntu:26.04, debian:13, alpine:3.20) are kept warm — no pull.";;
+  esac
+}
+
+# ───────────────────────────── shell: instant throwaway interactive Linux (keyless)
+SHELL_ID=""
+on_shell_exit(){ [ -n "$SHELL_ID" ] || return 0
+  "$CLI" sandbox rm -y "$SHELL_ID" >/dev/null 2>&1 && echo "cos: destroyed scratch $SHELL_ID" >&2 || true; }
+cmd_shell(){
+  _norm "$@"; set -- ${NORMA[@]+"${NORMA[@]}"}
+  local shape=s-1vcpu-1gb rootfs=devbox:1 egress_all=0; COS_EGRESS=(); local -a _d; local OPTIND=1 o doms d
+  while getopts "s:r:e:p:Eh" o; do case $o in
+    s) shape=$OPTARG;; r) rootfs=$OPTARG;;
+    e) COS_EGRESS+=(--egress "$OPTARG");;
+    p) doms=$(egress_preset "$OPTARG") || die "unknown egress preset '$OPTARG'"
+       read -ra _d <<<"$doms"; for d in "${_d[@]}"; do COS_EGRESS+=(--egress "$d"); done;;
+    E) egress_all=1;;
+    h) echo "cos shell [-s shape] [-r rootfs] [-e dom|-p preset|-E]"; exit 0;;
+    *) die "usage: cos shell [-s shape] [-r rootfs] [-e dom|-p preset|-E]";; esac; done
+  [ "$egress_all" = 1 ] && COS_EGRESS=()
+  SHELL_ID=$(create_box "cos-sh-$$-${RANDOM}" "$shape" "$rootfs")
+  trap on_shell_exit EXIT INT TERM      # destroy on exit / Ctrl-C / error
+  echo "cos: scratch box $SHELL_ID ($shape/$rootfs) — exit the shell to destroy it" >&2
+  wait_running "$SHELL_ID" 30 || die "scratch box not running"
+  "$CLI" sandbox shell "$SHELL_ID" || true
+}
+
+# ───────────────────────────── fanout: run commands across N throwaway boxes (parallel)
+fanout_usage(){ cat <<'EOF'
+cos fanout — run commands across N throwaway boxes in parallel (stage once → run each → collect → destroy).
+  cos fanout [flags] <dir> <cmd1> [cmd2] [cmd3] ...
+Each <cmdN> runs in its OWN isolated box, staged from <dir>. Per-job logs + exit codes summarized at the end.
+flags: -j N (max concurrent, default 2 = external-key quota) · -s shape · -r rootfs · -p preset · -e dom · -E · -x glob
+example:
+  cos fanout -j 2 -p python-uv . 'pytest -q tests/a' 'pytest -q tests/b' 'pytest -q tests/c'
+EOF
+}
+fanout_one(){ # $1=idx $2=cmd $3=shape $4=rootfs $5=staged-tar $6=resdir
+  local i=$1 cmd=$2 shape=$3 rootfs=$4 staged=$5 resdir=$6 id
+  id=$(create_box "cos-fo-$$-$i-${RANDOM}" "$shape" "$rootfs" 2>/dev/null) \
+    || { echo 127 > "$resdir/$i.rc"; echo "create failed" > "$resdir/$i.log"; return; }
+  if wait_running "$id" 30 \
+     && "$CLI" sandbox push "$id" - /work.tar < "$staged" >/dev/null 2>&1 \
+     && "$CLI" sandbox exec "$id" -- bash -lc 'mkdir -p /work && tar -C /work -xf /work.tar && rm -f /work.tar' >/dev/null 2>&1; then
+    run_keepalive "$id" "$cmd" /work "$resdir/$i.log" >/dev/null 2>&1 || true
+    echo "${BUILD_RC:-1}" > "$resdir/$i.rc"
+  else
+    echo "stage/boot failed" >> "$resdir/$i.log"; echo 1 > "$resdir/$i.rc"
+  fi
+  "$CLI" sandbox rm -y "$id" >/dev/null 2>&1 || true
+}
+cmd_fanout(){
+  _norm "$@"; set -- ${NORMA[@]+"${NORMA[@]}"}
+  local shape=s-1vcpu-1gb rootfs=devbox:1 jobs=2 egress_all=0; COS_EGRESS=(); local -a excl=() _d; local OPTIND=1 o doms d
+  while getopts "s:r:j:e:p:x:Eh" o; do case $o in
+    s) shape=$OPTARG;; r) rootfs=$OPTARG;; j) jobs=$OPTARG;;
+    e) COS_EGRESS+=(--egress "$OPTARG");;
+    p) doms=$(egress_preset "$OPTARG") || die "unknown egress preset '$OPTARG'"
+       read -ra _d <<<"$doms"; for d in "${_d[@]}"; do COS_EGRESS+=(--egress "$d"); done;;
+    x) excl+=("$OPTARG");;
+    E) egress_all=1;;
+    h) fanout_usage; exit 0;;
+    *) fanout_usage >&2; exit 2;; esac; done
+  shift $((OPTIND-1))
+  [ $# -ge 2 ] || { fanout_usage; exit 0; }
+  local dir=$1; shift
+  [ -d "$dir" ] || die "no such dir: $dir"
+  numeric "$jobs" && [ "$jobs" -ge 1 ] || die "-j must be a positive integer"
+  [ "$egress_all" = 1 ] && COS_EGRESS=()
+  local -a cmds=("$@"); local n=${#cmds[@]}
+  echo "cos: fanout $n job(s), ≤$jobs concurrent ($shape). External keys allow 2 running — keep -j ≤2." >&2
+
+  # stage the input tree once; every job pushes the same tarball
+  local -a tarx=(); local p
+  for p in "${DEFAULT_EXCLUDES[@]}" ${excl[@]+"${excl[@]}"}; do tarx+=(--exclude "$p"); done
+  local staged resdir; staged=$(mktemp "$STATE_DIR/fanout-stage.XXXXXX"); resdir=$(mktemp -d "$STATE_DIR/fanout.XXXXXX")
+  tar "${tarx[@]}" -c -C "$dir" . > "$staged" 2>/dev/null || die "staging tar failed"
+
+  local i; local -a pids=()   # bash-3.2-safe throttle: cap concurrency by waiting on the oldest pid
+  for ((i=0;i<n;i++)); do
+    fanout_one "$i" "${cmds[$i]}" "$shape" "$rootfs" "$staged" "$resdir" & pids+=("$!")
+    if [ "${#pids[@]}" -ge "$jobs" ]; then wait "${pids[0]}" 2>/dev/null || true; pids=("${pids[@]:1}"); fi
+  done
+  wait
+  rm -f "$staged"
+
+  echo "cos: ── fanout results ──" >&2
+  local rc all=0
+  for ((i=0;i<n;i++)); do
+    rc=$(cat "$resdir/$i.rc" 2>/dev/null || echo '?')
+    echo "  job $i  rc=$rc  log=$resdir/$i.log  cmd: ${cmds[$i]}" >&2
+    [ "$rc" = 0 ] || all=1
+  done
+  return "$all"
+}
+
+# ───────────────────────────── disk: BYO S3 bucket mounts (attach/detach on the project box)
+cmd_disk(){
+  local action=${1:-}; shift || true
+  case "$action" in
+    create)    echo "cos: ⚠ secret keys passed on the command line are visible to other local users (ps) and saved in shell history — prefer the CLI's interactive prompts" >&2; "$CLI" sandbox disk create "$@";;
+    ls|list)   "$CLI" sandbox disk ls "$@";;
+    show|get)  "$CLI" sandbox disk show "$@";;
+    rm|delete) "$CLI" sandbox disk rm "$@";;
+    attach)    local id; id=$(state_get id); [ -n "$id" ] || die "no active box — 'cos up' first"
+               local disk=${1:?disk name/id required} mp=${2:?mount path required (e.g. /mnt/data)}
+               "$CLI" sandbox disk attach "$id" "$disk" "$mp";;
+    detach)    local id; id=$(state_get id); [ -n "$id" ] || die "no active box — run 'cos up' first"
+               local disk=${1:?disk name/id required} mp=${2:?mount path required}
+               "$CLI" sandbox disk detach "$id" "$disk" "$mp";;
+    *) die "usage: cos disk create <name> --bucket --endpoint --access-key --secret-key [--region] [--path-style] | ls | show <name> | attach <disk> <mount> | detach <disk> <mount> | rm <name>";;
+  esac
+}
+
+# ── auto-install the createos CLI (official one-liner) when it's missing ───────
+ensure_cli(){
+  have "$CLI" && return 0
+  # only auto-install the stock binary; a custom COS_CLI path is the user's to manage
+  [ "$CLI" = createos ] || die "createos CLI '$CLI' (COS_CLI) not found — install it or unset COS_CLI"
+  [ -z "${COS_NO_AUTOINSTALL:-}" ] || die "createos CLI not found (COS_NO_AUTOINSTALL set) — install: $CLI_INSTALL_URL"
+  have curl || die "createos CLI not found and curl missing — install manually: $CLI_INSTALL_URL"
+  echo "cos: createos CLI not found — installing via $CLI_INSTALL_URL" >&2
+  if [ "$CLI_INSTALL_URL" != "$CLI_INSTALL_URL_DEFAULT" ] && [ -z "${COS_AUTOINSTALL_ALLOW_CUSTOM_URL:-}" ]; then
+    die "refusing to auto-install createos from a custom COS_CLI_INSTALL_URL ($CLI_INSTALL_URL) — install manually, or set COS_AUTOINSTALL_ALLOW_CUSTOM_URL=1 to trust it"
+  fi
+  curl -sfL "$CLI_INSTALL_URL" | sh - >&2 || die "createos install failed — try manually: curl -sfL $CLI_INSTALL_URL | sh -"
+  # installer may land in ~/.local/bin, which isn't on this shell's PATH yet
+  case ":$PATH:" in *":$HOME/.local/bin:"*) :;; *) PATH="$HOME/.local/bin:$PATH";; esac
+  hash -r 2>/dev/null || true
+  have "$CLI" || die "createos installed but not on PATH — add /usr/local/bin or ~/.local/bin to PATH and retry"
+  echo "cos: createos installed ($("$CLI" version 2>/dev/null | head -1 || echo ok))." >&2
+}
+
+# ── auth preflight ────────────────────────────────────────────────────────────
+# `createos login` is a TTY prompt (interactive select → browser OAuth), so an
+# agent shell can never drive it. Detect credentials locally instead and hand
+# the sign-in off to the human. CREATEOS_API_KEY wins: set it and no browser
+# login is needed at all.
+CREATEOS_DIR=$HOME/.createos
+
+auth_method(){
+  [ -n "${CREATEOS_API_KEY:-}" ] && { echo env;   return 0; }
+  [ -f "$CREATEOS_DIR/.token" ]  && { echo token; return 0; }
+  [ -f "$CREATEOS_DIR/.oauth" ]  && { echo oauth; return 0; }
+  return 1
+}
+
+ensure_auth(){
+  auth_method >/dev/null && return 0
+  cat >&2 <<'EOF'
+cos: not signed in to CreateOS.
+
+  Ask the user to run this in their own terminal. It needs a TTY and a browser,
+  so it cannot be run from an agent shell:
+
+      createos login        # then pick "Sign in with browser (recommended)"
+
+  Or, for headless / CI / no-browser setups, an API key from
+  https://createos.sh skips browser login entirely:
+
+      export CREATEOS_API_KEY=<key>
+
+  Never ask the user to paste an API key into the conversation — it would be
+  written to the transcript. Have them export it, or sign in with the browser.
+
+  Then re-run: cos auth
+EOF
+  exit 1
+}
+
+cmd_auth(){
+  local m
+  m=$(auth_method) || ensure_auth
+  case "$m" in
+    env)   echo "cos: signed in via CREATEOS_API_KEY (browser login not needed)";;
+    token) echo "cos: signed in via API token ($CREATEOS_DIR/.token)";;
+    oauth) echo "cos: signed in via browser OAuth session ($CREATEOS_DIR/.oauth)";;
+  esac
+}
+
+cmd_install(){
+  local target=${1:-$HOME/.local/bin/cos} self dir
+  self=$(perl -MCwd=abs_path -e 'print abs_path(shift)' "$0" 2>/dev/null || printf '%s' "$0")
+  dir=$(dirname "$target"); mkdir -p "$dir"; ln -sf "$self" "$target"
+  echo "cos: linked $target → $self" >&2
+  case ":$PATH:" in *":$dir:"*) echo "cos: $dir on PATH ✓" >&2;;
+    *) echo "cos: ⚠ $dir not on PATH — add: export PATH=\"$dir:\$PATH\"" >&2;; esac
+}
+
+main_usage(){ cat <<'EOF'
+cos — CreateOS sandbox as remote compute.  (run `cos install` to put `cos` on PATH)
+  cos auth                            check sign-in (CREATEOS_API_KEY, or `createos login` in a real terminal)
+  cos offload [flags] <dir> <cmd>     one-shot: stage→run(keepalive)→pull→destroy   (cos offload -h for flags)
+  cos fanout [-j N][flags] <dir> <cmd>...   run each <cmd> in its own throwaway box, in parallel  (cos fanout -h)
+  cos shell [-s][-r][-e|-p|-E]        instant throwaway interactive Linux (destroyed on exit)
+  cos up   [-s][-r][-n][-e|-p|-E][-a] create/reuse project box (-a adopt a box cos didn't create)
+  cos run  <cmd>                      run in project box (keepalive; ONE string, no '--' separator)
+  cos sync [-2|-M][-x glob] <dir> [remote]   file sync (default one-way, -2 two-way, -M mirror; big dirs excluded)
+  cos tunnel <remote> [local]         forward box port → 127.0.0.1 (background)
+  cos expose <port>                   public HTTPS URL for a box port  (unexpose to revoke)
+  cos cluster up <N> [-s|-r|-e|-p|-E] | run [<name|idx>|-a] <cmd> | ls | down    N boxes on one private net
+  cos disk create|ls|attach <disk> <mount>|detach|rm   BYO S3 bucket mounts
+  cos vpn [up|register [name]]        WireGuard L3 into your private networks (needs wg-quick)
+  cos fork                            snapshot project box → independent clone (survives down; -f reaps)
+  cos pause | cos resume              park the warm box at zero compute cost / bring it back
+  cos template submit <name> [-f Dockerfile] | ls | show | logs | rm    custom rootfs (bake the toolchain once)
+  cos down [-f]                       stop sync/tunnels + destroy box (+ cluster; -f also destroys forks)
+  cos status                          show active box + sync + tunnels + cluster
+
+One-shot work belongs in `offload` (auto-destroys), not `up`+`run` (box persists until `down`).
+egress: default = unrestricted (box reaches any host); restrict with -e <domain> or -p <preset>; -E forces unrestricted
+EOF
+}
+
+# install needs no createos; auth needs the CLI but is itself the sign-in check;
+# help must work when signed OUT, or a new user can't discover how to sign in.
+sub=${1:-}; shift || true
+case "$sub" in
+  install)                 :;;
+  auth)                    ensure_cli;;
+  help|-h|--help|'')       main_usage; exit 0;;
+  *)                       ensure_cli; have jq || die "jq required"; ensure_auth;;
+esac
+case "$sub" in
+  install)  cmd_install "$@";;
+  auth)     cmd_auth "$@";;
+  offload)  cmd_offload "$@";;
+  fanout)   cmd_fanout "$@";;
+  shell)    cmd_shell "$@";;
+  up)       cmd_up "$@";;
+  run)      cmd_run "$@";;
+  sync)     cmd_sync "$@";;
+  tunnel)   cmd_tunnel "$@";;
+  expose)   cmd_expose "$@";;
+  unexpose) cmd_unexpose "$@";;
+  cluster)  cmd_cluster "$@";;
+  disk)     cmd_disk "$@";;
+  vpn)      cmd_vpn "$@";;
+  fork)     cmd_fork "$@";;
+  pause)    cmd_pause "$@";;
+  resume)   cmd_resume "$@";;
+  template) cmd_template "$@";;
+  down)     cmd_down "$@";;
+  status)   cmd_status "$@";;
+  *) echo "cos: unknown subcommand '$sub'" >&2; main_usage >&2; exit 2;;
+esac
