@@ -364,12 +364,12 @@ export async function deleteNetwork($: any, idOrName: string): Promise<void> {
 }
 
 export async function attachNetwork($: any, sandboxId: string, netIdOrName: string): Promise<void> {
-  const res = await run($, ["sandbox", "network", "attach", sandboxId, netIdOrName]);
+  const res = await run($, ["sandbox", "network", "attach", netIdOrName, sandboxId]);
   if (res.code !== 0) throw new CLIError("network attach", res);
 }
 
 export async function detachNetwork($: any, sandboxId: string, netIdOrName: string): Promise<void> {
-  const res = await run($, ["sandbox", "network", "detach", sandboxId, netIdOrName, "--yes"]);
+  const res = await run($, ["sandbox", "network", "detach", netIdOrName, sandboxId, "--yes"]);
   if (res.code !== 0) throw new CLIError("network detach", res);
 }
 
@@ -474,7 +474,7 @@ export async function attachDeviceToNetwork(
   deviceId: string,
   netIdOrName: string,
 ): Promise<void> {
-  const res = await run($, ["sandbox", "network", "attach", deviceId, netIdOrName]);
+  const res = await run($, ["sandbox", "network", "attach", netIdOrName, deviceId]);
   if (res.code !== 0) throw new CLIError("network attach (device)", res);
 }
 
@@ -483,7 +483,7 @@ export async function detachDeviceFromNetwork(
   deviceId: string,
   netIdOrName: string,
 ): Promise<void> {
-  const res = await run($, ["sandbox", "network", "detach", deviceId, netIdOrName, "--yes"]);
+  const res = await run($, ["sandbox", "network", "detach", netIdOrName, deviceId, "--yes"]);
   if (res.code !== 0) throw new CLIError("network detach (device)", res);
 }
 
