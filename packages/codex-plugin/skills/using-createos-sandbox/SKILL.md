@@ -108,7 +108,7 @@ createos sandbox tunnel --remote <port> --local <port> <sandbox-id>
 
 ```bash
 createos sandbox network create <name>
-createos sandbox network attach <sandbox-id> <network-name>
+createos sandbox network attach <network-name> <sandbox-id>
 createos sandbox network show <network-name>
 ```
 
