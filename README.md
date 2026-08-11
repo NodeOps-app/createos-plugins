@@ -47,6 +47,12 @@ pi install npm:@createos/pi
 
 # 2. Start a session with all tools routed to a remote sandbox
 pi --createos
+
+# Optional: copy this project to /root/workspace before Pi starts
+pi --createos --sync-once
+
+# Optional: continuously sync this project and /root/workspace
+pi --createos --watch
 ```
 
 The `createos` CLI **auto-installs** on first use. Sign in once with `createos login` (browser OAuth, run it in your own terminal) or `export CREATEOS_API_KEY=<key>`; check with `cos auth`. Prefer a local checkout? See [Install](#install).
@@ -97,12 +103,17 @@ All built-in tools (bash, read, write, edit, ls, find, grep) transparently route
 
 ### Flags
 
-| Flag               | Purpose                               |
-| ------------------ | ------------------------------------- |
-| `--createos`       | Activate the extension                |
-| `--shape <shape>`  | Sandbox size (default: `s-2vcpu-2gb`) |
-| `--rootfs <name>`  | Base image or template                |
-| `--network <name>` | Network(s) to join at creation        |
+| Flag               | Purpose                                |
+| ------------------ | -------------------------------------- |
+| `--createos`       | Activate the extension                 |
+| `--shape <shape>`  | Sandbox size (default: `s-2vcpu-2gb`)  |
+| `--rootfs <name>`  | Base image or template                 |
+| `--network <name>` | Network(s) to join at creation         |
+| `--sync-once`      | Copy project to `/root/workspace` once |
+| `--watch`          | Two-way project sync for this session  |
+
+`--sync-once` and `--watch` are mutually exclusive. The first preserves
+sandbox-only files; the latter starts the existing two-way sync.
 
 Full tool inventory lives in the [**Pi Extension README**](./packages/pi-extension/README.md).
 

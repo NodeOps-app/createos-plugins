@@ -74,12 +74,18 @@ to the sandbox when `--createos` is active, local when off.
 
 ## Flags
 
-| Flag         | Type    | Purpose                                          |
-| ------------ | ------- | ------------------------------------------------ |
-| `--createos` | boolean | Activate the extension                           |
-| `--shape`    | string  | Sandbox size (default: `s-2vcpu-2gb`)            |
-| `--rootfs`   | string  | Base image or template                           |
-| `--network`  | string  | Network(s) to join at creation (comma-separated) |
+| Flag          | Type    | Purpose                                          |
+| ------------- | ------- | ------------------------------------------------ |
+| `--createos`  | boolean | Activate the extension                           |
+| `--shape`     | string  | Sandbox size (default: `s-2vcpu-2gb`)            |
+| `--rootfs`    | string  | Base image or template                           |
+| `--network`   | string  | Network(s) to join at creation (comma-separated) |
+| `--sync-once` | boolean | Copy the host project to `/root/workspace` first |
+| `--watch`     | boolean | Keep the host project and sandbox synchronized   |
+
+`--sync-once` and `--watch` are mutually exclusive. The first packs and uploads
+host files without VCS metadata; the second delegates to the existing two-way
+`createos sandbox sync` command.
 
 ## Slash commands
 
@@ -91,9 +97,9 @@ to the sandbox when `--createos` is active, local when off.
 
 ## Lifecycle
 
-1. `session_start` — preflight checks, create sandbox, set up workspace
+1. `session_start` — preflight checks, create sandbox, then optionally sync or watch `/root/workspace`
 2. `before_agent_start` — inject sandbox context into system prompt
-3. `session_shutdown` — clean up temp SSH key, destroy sandbox (ephemeral) or keep (persisted)
+3. `session_shutdown` — stop a watcher, clean up temp SSH key, destroy sandbox (ephemeral) or keep (persisted)
 
 ## CLI JSON support
 

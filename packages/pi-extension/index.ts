@@ -5,10 +5,22 @@
  * no API key env vars — just `createos login` and go.
  */
 
-import type { ExtensionAPI, ExtensionContext } from "@earendil-works/pi-coding-agent";
+import {
+  BorderedLoader,
+  type ExtensionAPI,
+  type ExtensionContext,
+} from "@earendil-works/pi-coding-agent";
+
 import * as cli from "./src/cli.ts";
-import { registerTools } from "./src/tools.ts";
 import { sandboxExec, cleanupTempKey, autoInstallCLI } from "./src/cli.ts";
+import {
+  selectStartupSync,
+  startProjectWatch,
+  stopProjectWatch,
+  syncProjectOnce,
+  type ProjectWatch,
+} from "./src/startup-sync.ts";
+import { registerTools } from "./src/tools.ts";
 import { shortId } from "./src/util.ts";
 
 const SESSION_ENTRY = "createos-session";
@@ -36,10 +48,44 @@ export default function (pi: ExtensionAPI) {
     description: "Network(s) to join (comma-separated)",
     type: "string",
   });
+  pi.registerFlag("sync-once", {
+    description: "Copy the host project to /root/workspace before starting Pi",
+    type: "boolean",
+  });
+  pi.registerFlag("watch", {
+    description: "Keep the host project and /root/workspace synchronized",
+    type: "boolean",
+  });
 
   let active: ActiveSandbox | null = null;
+  let projectWatch: ProjectWatch | undefined;
 
   registerTools(pi, () => (active ? { sandboxId: active.sandboxId, cwd: active.cwd } : null));
+
+  async function setupStartupSync(
+    ctx: ExtensionContext,
+    mode: "once" | "watch" | undefined,
+    sandbox: ActiveSandbox,
+  ): Promise<void> {
+    if (!mode) {
+      setRunningStatus(ctx, sandbox.sandboxId, sandbox.cwd);
+      return;
+    }
+    if (mode === "once") {
+      await runStartupLoader(ctx, "Syncing project to sandbox…", async (signal) => {
+        await syncProjectOnce(pi, sandbox.sandboxId, hostCwd, signal);
+        return true;
+      });
+      setRunningStatus(ctx, sandbox.sandboxId, sandbox.cwd);
+      return;
+    }
+
+    const watch = await runStartupLoader(ctx, "Starting project file watch…", (signal) =>
+      startProjectWatch(pi, sandbox.sandboxId, hostCwd, signal),
+    );
+    projectWatch = watch;
+    setWatchingStatus(ctx, sandbox.sandboxId, sandbox.cwd);
+  }
 
   // --- Commands ---
 
@@ -83,7 +129,7 @@ export default function (pi: ExtensionAPI) {
         arg = parts.slice(1).join(" ").trim();
       try {
         switch (sub) {
-          case "create":
+          case "create": {
             if (!arg) {
               ctx.ui.notify("Usage: /network create <name>", "warning");
               return;
@@ -91,8 +137,9 @@ export default function (pi: ExtensionAPI) {
             const net = await cli.createNetwork(pi, arg);
             ctx.ui.notify(`Network created: ${net.name} (${net.id})`, "info");
             break;
+          }
           case "ls":
-          case "list":
+          case "list": {
             const nets = await cli.listNetworks(pi);
             if (!nets.length) {
               ctx.ui.notify("No networks. Create with /network create <name>", "info");
@@ -103,7 +150,8 @@ export default function (pi: ExtensionAPI) {
               "info",
             );
             break;
-          case "show":
+          }
+          case "show": {
             if (!arg) {
               ctx.ui.notify("Usage: /network show <name|id>", "warning");
               return;
@@ -119,6 +167,7 @@ export default function (pi: ExtensionAPI) {
             } else lines.push("No members");
             ctx.ui.notify(lines.join("\n"), "info");
             break;
+          }
           case "rm":
           case "delete":
             if (!arg) {
@@ -233,6 +282,17 @@ export default function (pi: ExtensionAPI) {
     if (pi.getFlag("createos") !== true) return;
     if (active) return;
 
+    let startupSync: "once" | "watch" | undefined;
+    try {
+      startupSync = selectStartupSync(
+        pi.getFlag("sync-once") === true,
+        pi.getFlag("watch") === true,
+      );
+    } catch (err) {
+      ctx.ui.notify(errorMessage(err), "error");
+      return;
+    }
+
     if (!(await cli.isCreateOSInstalled(pi))) {
       setStatus(ctx, "☁ createos · installing CLI…");
       ctx.ui.notify("CreateOS CLI not found — installing automatically…", "info");
@@ -275,8 +335,8 @@ export default function (pi: ExtensionAPI) {
               }
             }
             active = { sandboxId: prev.sandboxId, cwd: prev.cwd };
+            await setupStartupSync(ctx, startupSync, active);
             ctx.ui.notify(`Reattached · ${shortId(prev.sandboxId)}`, "info");
-            setRunningStatus(ctx, prev.sandboxId, prev.cwd);
             return;
           } catch (err) {
             if (!(err instanceof cli.CLIError && err.isNotFound)) throw err;
@@ -311,15 +371,17 @@ export default function (pi: ExtensionAPI) {
       if (persisted)
         pi.appendEntry(SESSION_ENTRY, { sandboxId: sandbox.id, cwd } as SessionEntryData);
 
+      await setupStartupSync(ctx, startupSync, active);
       const secs = ((Date.now() - startedAt) / 1000).toFixed(1);
       ctx.ui.notify(`Sandbox ready · ${shortId(sandbox.id)} · ${secs}s`, "info");
-      setRunningStatus(ctx, sandbox.id, cwd);
     } catch (err) {
       active = null;
       if (createdId)
         try {
           await cli.destroySandbox(pi, createdId);
-        } catch {}
+        } catch (cleanupError) {
+          console.error("CreateOS: failed to clean up sandbox", cleanupError);
+        }
       setStatus(ctx, undefined);
       ctx.ui.notify(`CreateOS: failed — ${errorMessage(err)}`, "error");
     }
@@ -339,7 +401,7 @@ export default function (pi: ExtensionAPI) {
       "\nAll tools run remotely in this sandbox. You know the sandbox ID and cwd — never run pwd/hostname." +
       "\n" +
       "\nQuick rules:" +
-      `\n- "mount/sync this dir" → sandbox_sync local_dir="${hostCwd}" remote_dir="/root/project"` +
+      `\n- "mount/sync this dir" → sandbox_sync local_dir="${hostCwd}" remote_dir="/root/workspace"` +
       "\n- Port access → sandbox_preview_url (public URL) > sandbox_tunnel (localhost) > device VPN (last resort)" +
       "\n- Multi-node → sandbox_network_create + sandbox_create with network + sandbox_exec on other sandboxes" +
       "\n--- End CreateOS ---";
@@ -347,6 +409,14 @@ export default function (pi: ExtensionAPI) {
   });
 
   pi.on("session_shutdown", async (event, _ctx) => {
+    if (projectWatch) {
+      try {
+        await stopProjectWatch(pi, projectWatch);
+      } catch (stopError) {
+        console.error("CreateOS: failed to stop project watch", stopError);
+      }
+      projectWatch = undefined;
+    }
     if (!active) return;
     if (event.reason === "new" || event.reason === "resume" || event.reason === "fork") return;
     const current = active;
@@ -355,15 +425,51 @@ export default function (pi: ExtensionAPI) {
     // Clean up temp SSH key used by sync.
     try {
       await cleanupTempKey(pi);
-    } catch {}
+    } catch (cleanupError) {
+      console.error("CreateOS: failed to clean up sync key", cleanupError);
+    }
 
     const persisted = _ctx.sessionManager.getSessionFile() !== undefined;
     if (!persisted) {
       try {
         await cli.destroySandbox(pi, current.sandboxId);
-      } catch {}
+      } catch (destroyError) {
+        console.error("CreateOS: failed to destroy sandbox", destroyError);
+      }
     }
   });
+}
+
+async function runStartupLoader<T>(
+  ctx: ExtensionContext,
+  message: string,
+  operation: (signal?: AbortSignal) => Promise<T>,
+): Promise<T> {
+  if (ctx.mode !== "tui") return operation();
+
+  let failure: unknown;
+  let cancelled = false;
+  const result = await ctx.ui.custom<T | null>((tui, theme, _keybindings, done) => {
+    const loader = new BorderedLoader(tui, theme, message);
+    loader.onAbort = () => {
+      cancelled = true;
+      done(null);
+    };
+    void (async () => {
+      try {
+        done(await operation(loader.signal));
+      } catch (error) {
+        failure = error;
+        done(null);
+      }
+    })();
+    return loader;
+  });
+
+  if (failure !== undefined) throw failure;
+  if (cancelled || result === null || result === undefined)
+    throw new Error("Startup sync cancelled");
+  return result;
 }
 
 function latestSessionEntry(ctx: ExtensionContext): SessionEntryData | undefined {
@@ -380,6 +486,9 @@ function setStatus(ctx: ExtensionContext, text: string | undefined): void {
 }
 function setRunningStatus(ctx: ExtensionContext, id: string, cwd: string): void {
   setStatus(ctx, `☁ createos · ${shortId(id)} · running · ${cwd}`);
+}
+function setWatchingStatus(ctx: ExtensionContext, id: string, cwd: string): void {
+  setStatus(ctx, `☁ createos · ${shortId(id)} · sync watching · ${cwd}`);
 }
 function stringFlag(value: boolean | string | undefined): string | undefined {
   return typeof value === "string" && value.length > 0 ? value : undefined;

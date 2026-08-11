@@ -7,19 +7,26 @@
 
 import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
 
+import { shellQuote } from "./util.ts";
+
 export interface ExecResult {
   code: number;
   stdout: string;
   stderr: string;
 }
 
-async function run(pi: ExtensionAPI, args: string[]): Promise<ExecResult> {
-  const res = await pi.exec("createos", args);
+async function run(pi: ExtensionAPI, args: string[], signal?: AbortSignal): Promise<ExecResult> {
+  const res = await pi.exec("createos", args, { signal });
   return { code: res.code, stdout: res.stdout ?? "", stderr: res.stderr ?? "" };
 }
 
 function parseJSON<T>(stdout: string): T {
-  return JSON.parse(stdout) as T;
+  try {
+    return JSON.parse(stdout) as T;
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    throw new Error(`Invalid JSON from createos: ${message}`);
+  }
 }
 
 // --- Sandbox lifecycle ---
@@ -173,24 +180,34 @@ export async function startTunnel(
 
 let tempKeyPath: string | undefined;
 
-/** Generate a temporary unencrypted SSH key for sync. Reused across the session. */
-export async function ensureTempKey(pi: ExtensionAPI): Promise<string> {
-  if (tempKeyPath) return tempKeyPath;
+/** Generate an unencrypted SSH key for a CreateOS sync process. */
+export async function createTempKey(pi: ExtensionAPI): Promise<string> {
   const res = await pi.exec("sh", [
     "-c",
     'dir=$(mktemp -d) && ssh-keygen -t ed25519 -f "$dir/id_sync" -N "" -q && echo "$dir/id_sync"',
   ]);
   if (res.code !== 0) throw new Error(`Failed to generate temp SSH key: ${res.stderr}`);
-  tempKeyPath = res.stdout!.trim();
+  return res.stdout.trim();
+}
+
+/** Generate a temporary unencrypted SSH key for tool-initiated sync. */
+export async function ensureTempKey(pi: ExtensionAPI): Promise<string> {
+  if (!tempKeyPath) tempKeyPath = await createTempKey(pi);
   return tempKeyPath;
 }
 
-/** Clean up the temp SSH key on shutdown. */
+export async function cleanupKey(pi: ExtensionAPI, keyPath: string): Promise<void> {
+  const dir = keyPath.replace(/\/[^/]+$/, "");
+  const result = await pi.exec("rm", ["-rf", dir]);
+  if (result.code !== 0) throw new Error(`Failed to clean up temp SSH key: ${result.stderr}`);
+}
+
+/** Clean up the reusable temp SSH key on shutdown. */
 export async function cleanupTempKey(pi: ExtensionAPI): Promise<void> {
-  if (!tempKeyPath) return;
-  const dir = tempKeyPath.replace(/\/[^/]+$/, "");
-  await pi.exec("rm", ["-rf", dir]);
-  tempKeyPath = undefined;
+  const keyPath = tempKeyPath;
+  if (!keyPath) return;
+  await cleanupKey(pi, keyPath);
+  if (tempKeyPath === keyPath) tempKeyPath = undefined;
 }
 
 export async function startSync(
@@ -198,12 +215,12 @@ export async function startSync(
   sandboxId: string,
   localDir: string,
   remoteDir: string,
-  opts?: { mode?: string; exclude?: string[] },
+  opts?: { mode?: string; exclude?: string[]; keyPath?: string; signal?: AbortSignal },
 ): Promise<{ pid: string }> {
-  const check = await run(pi, ["sandbox", "get", sandboxId]);
+  const check = await run(pi, ["sandbox", "get", sandboxId], opts?.signal);
   if (check.code !== 0) throw new CLIError("sync preflight", check);
 
-  const keyPath = await ensureTempKey(pi);
+  const keyPath = opts?.keyPath ?? (await ensureTempKey(pi));
 
   const args = [
     "sandbox",
@@ -222,10 +239,26 @@ export async function startSync(
   }
   args.push(sandboxId);
 
-  const shellCmd = `nohup createos ${args.join(" ")} > /dev/null 2>&1 & echo $!`;
-  const res = await pi.exec("sh", ["-c", shellCmd]);
-  const pid = res.stdout?.trim() ?? "";
+  const pid = await startDetached(pi, args, opts?.signal);
   return { pid };
+}
+
+export async function stopSync(pi: ExtensionAPI, pid: string): Promise<void> {
+  if (!/^\d+$/.test(pid)) throw new Error(`Invalid sync process ID: ${pid}`);
+  const result = await pi.exec("kill", ["-TERM", pid]);
+  if (result.code !== 0) throw new Error(`Could not stop sync process ${pid}`);
+}
+
+async function startDetached(
+  pi: ExtensionAPI,
+  args: string[],
+  signal?: AbortSignal,
+): Promise<string> {
+  const command = `nohup ${["createos", ...args].map(shellQuote).join(" ")} > /dev/null 2>&1 < /dev/null & echo $!`;
+  const result = await pi.exec("sh", ["-c", command], { signal });
+  const pid = result.stdout?.trim() ?? "";
+  if (result.code !== 0 || !/^\d+$/.test(pid)) throw new Error("Could not start sync process");
+  return pid;
 }
 
 // --- Exec ---
@@ -234,8 +267,9 @@ export async function sandboxExec(
   pi: ExtensionAPI,
   id: string,
   command: string,
+  signal?: AbortSignal,
 ): Promise<{ stdout: string; exitCode: number }> {
-  const res = await run(pi, ["sandbox", "exec", id, "--", "sh", "-c", command]);
+  const res = await run(pi, ["sandbox", "exec", id, "--", "sh", "-c", command], signal);
   // CLI preserves the inner command's exit code.
   return { stdout: res.stdout, exitCode: res.code };
 }
@@ -246,6 +280,17 @@ export async function pullFile(pi: ExtensionAPI, id: string, remotePath: string)
   const res = await run(pi, ["sandbox", "pull", id, remotePath, "-"]);
   if (res.code !== 0) throw new CLIError("sandbox pull", res);
   return res.stdout;
+}
+
+export async function pushLocalFile(
+  pi: ExtensionAPI,
+  id: string,
+  localPath: string,
+  remotePath: string,
+  signal?: AbortSignal,
+): Promise<void> {
+  const res = await run(pi, ["sandbox", "push", id, localPath, remotePath], signal);
+  if (res.code !== 0) throw new CLIError("sandbox push", res);
 }
 
 export async function pushFile(
