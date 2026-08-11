@@ -5,11 +5,13 @@ Runs all tool calls inside a remote sandbox while the agent runs locally.
 
 ## Architecture
 
-CLI-only — every operation shells out to the `createos` CLI via `pi.exec()`.
-No HTTP client, no SDK, no API keys. Auth is handled by `createos login`.
+CLI-only — operations call the `createos` CLI through `pi.exec()`; the
+long-lived sync watcher uses a detached Node child process so Pi does not own
+its lifetime. No HTTP client, no SDK, no API keys. Auth is handled by
+`createos login`.
 
-```
-Pi agent (local)  →  pi.exec('createos', [...])  →  CreateOS API  →  Sandbox
+```text
+Pi agent (local)  →  createos CLI  →  CreateOS API  →  Sandbox
 ```
 
 ## File layout

@@ -5,9 +5,9 @@
  * We pass `-o json` explicitly on every command that returns parseable data.
  */
 
-import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
+import { spawn } from "node:child_process";
 
-import { shellQuote } from "./util.ts";
+import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
 
 export interface ExecResult {
   code: number;
@@ -243,22 +243,57 @@ export async function startSync(
   return { pid };
 }
 
-export async function stopSync(pi: ExtensionAPI, pid: string): Promise<void> {
+export async function stopSync(_pi: ExtensionAPI, pid: string): Promise<void> {
   if (!/^\d+$/.test(pid)) throw new Error(`Invalid sync process ID: ${pid}`);
-  const result = await pi.exec("kill", ["-TERM", pid]);
-  if (result.code !== 0) throw new Error(`Could not stop sync process ${pid}`);
+  try {
+    process.kill(-Number(pid), "SIGTERM");
+  } catch (error) {
+    if (isMissingProcess(error)) return;
+    throw new Error(`Could not stop sync process ${pid}: ${errorMessage(error)}`);
+  }
 }
 
 async function startDetached(
-  pi: ExtensionAPI,
+  _pi: ExtensionAPI,
   args: string[],
   signal?: AbortSignal,
 ): Promise<string> {
-  const command = `nohup ${["createos", ...args].map(shellQuote).join(" ")} > /dev/null 2>&1 < /dev/null & echo $!`;
-  const result = await pi.exec("sh", ["-c", command], { signal });
-  const pid = result.stdout?.trim() ?? "";
-  if (result.code !== 0 || !/^\d+$/.test(pid)) throw new Error("Could not start sync process");
-  return pid;
+  if (signal?.aborted) throw new Error("Sync cancelled");
+
+  return new Promise((resolve, reject) => {
+    const child = spawn("createos", args, { detached: true, stdio: "ignore" });
+    const abort = () => stopDetachedProcess(child.pid);
+    signal?.addEventListener("abort", abort, { once: true });
+    child.once("error", (error) => {
+      signal?.removeEventListener("abort", abort);
+      reject(new Error(`Could not start sync process: ${error.message}`));
+    });
+    child.once("spawn", () => {
+      signal?.removeEventListener("abort", abort);
+      if (!child.pid) return reject(new Error("Could not start sync process"));
+      child.unref();
+      resolve(String(child.pid));
+    });
+  });
+}
+
+function stopDetachedProcess(pid: number | undefined): void {
+  if (!pid) return;
+  try {
+    process.kill(-pid, "SIGTERM");
+  } catch (error) {
+    if (!isMissingProcess(error)) throw error;
+  }
+}
+
+function isMissingProcess(error: unknown): boolean {
+  return (
+    typeof error === "object" && error !== null && (error as NodeJS.ErrnoException).code === "ESRCH"
+  );
+}
+
+function errorMessage(error: unknown): string {
+  return error instanceof Error ? error.message : String(error);
 }
 
 // --- Exec ---
