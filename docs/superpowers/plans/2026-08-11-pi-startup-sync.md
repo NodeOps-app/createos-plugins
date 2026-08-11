@@ -158,7 +158,12 @@ Expected: FAIL because `validateLocalSyncSource` does not exist.
 - Upload the archive using a new CLI wrapper that passes argument arrays to `createos sandbox push`.
 - Extract with `sandboxExec`; throw on a non-zero remote exit status.
 - Remove local and remote temporary archives in `finally` blocks.
-- Change detached command creation in `startSync` to join `shellQuote`d arguments, return only a numeric PID, and add `stopSync` which sends `TERM` to that PID.
+- Change `startSync` to spawn the watcher as a **detached Node child**
+  (`spawn("createos", args, { detached: true, stdio: "ignore" })` then
+  `child.unref()`), return the numeric PID, and add `stopSync` which kills the
+  whole process group (`process.kill(-pid, "SIGTERM")`). Do NOT use
+  `nohup ... & echo $!` through `pi.exec` — Pi's `exec` allocates a PTY and the
+  backgrounded process dies before Mutagen establishes the session.
 
 - [ ] **Step 4: Verify tests pass**
 

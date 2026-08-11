@@ -120,6 +120,20 @@ were patched in `createos-cli` to support it via `output.Render()`.
 - **Temp SSH key for sync**: `sandbox_sync` uses Mutagen which needs SSH.
   The user's key may be passphrase-protected (can't prompt non-interactively).
   We generate a throwaway ed25519 key per session, cleaned up on shutdown.
+  For `--watch`, the watcher gets its own key (held on `ProjectWatch`),
+  cleaned on every shutdown path (`quit`/`new`/`resume`/`fork`) to avoid
+  orphans.
+
+- **Detached spawn for the watch process**: `createos sandbox sync` is a
+  long-lived foreground process. Do NOT launch it via `pi.exec("sh", ["-c",
+"nohup ... & echo $!"])` — Pi's `exec` allocates a PTY, and the backgrounded
+  `nohup` process loses its controlling terminal and dies before Mutagen can
+  establish a sync session (sandbox stays unsynced, silently). Instead,
+  `startDetached` spawns it directly as a detached Node child
+  (`spawn("createos", args, { detached: true, stdio: "ignore" })` then
+  `child.unref()`), so Pi's event loop can exit while it runs. `stopSync`
+  kills the whole process group (`process.kill(-pid, "SIGTERM")`) and treats
+  `ESRCH` (already dead) as success.
 
 - **Tunnel flag order**: urfave/cli v2 stops parsing flags after positional
   args. Flags go before the sandbox ID: `tunnel --remote 5432 <id>`.
