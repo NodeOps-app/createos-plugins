@@ -2,18 +2,11 @@
 
 Pi coding agent extension that runs all tool calls inside a remote [CreateOS Sandbox](https://nodeops.network/createos) while the agent runs locally.
 
-## Install
-
-```bash
-npm install -g @earendil-works/pi-coding-agent
-pi install npm:@createos/pi
-```
-
 ## Setup
 
-Just have the CreateOS CLI installed and logged in:
-
 ```bash
+curl -sfL https://raw.githubusercontent.com/NodeOps-app/createos-cli/main/install.sh | sh -
+pi install git:github.com/NodeOps-app/createos-claude-plugins
 createos login
 ```
 
