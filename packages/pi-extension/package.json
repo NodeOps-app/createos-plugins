@@ -1,0 +1,44 @@
+{
+  "name": "@createos/pi",
+  "version": "0.2.0",
+  "description": "Pi coding agent extension that runs all tool calls inside a remote CreateOS Sandbox while the agent runs locally",
+  "keywords": [
+    "createos",
+    "pi-extension",
+    "pi-package",
+    "sandbox"
+  ],
+  "license": "Apache-2.0",
+  "author": "CreateOS",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/NodeOps-app/pi-extension.git"
+  },
+  "files": [
+    "index.ts",
+    "src",
+    "README.md"
+  ],
+  "type": "module",
+  "scripts": {
+    "test": "bun test src/startup-sync.test.ts",
+    "typecheck": "tsc --noEmit"
+  },
+  "devDependencies": {
+    "@earendil-works/pi-ai": "^0.79.0",
+    "@earendil-works/pi-coding-agent": "^0.79.0",
+    "@types/node": "^22",
+    "typebox": "1.1.38",
+    "typescript": "^5.6.0"
+  },
+  "peerDependencies": {
+    "@earendil-works/pi-ai": "^0.79.0",
+    "@earendil-works/pi-coding-agent": "^0.79.0",
+    "typebox": "^1.1.38"
+  },
+  "pi": {
+    "extensions": [
+      "./index.ts"
+    ]
+  }
+}

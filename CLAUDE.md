@@ -12,8 +12,8 @@ cross-repo mesh guide.
 Architectural decisions live in `docs/adr/`. Read the relevant one before
 reworking the thing it covers.
 
-| ADR | Decision | Status |
-|---|---|---|
+| ADR                                        | Decision                                                                                 | Status                     |
+| ------------------------------------------ | ---------------------------------------------------------------------------------------- | -------------------------- |
 | [0001](./docs/adr/0001-cos-bash-driver.md) | `cos`, a bash driver, as the plugin's execution engine — not the `createos` CLI directly | accepted, **under review** |
 
 ADR-0001 is load-bearing for anyone touching `scripts/cos`, the skill, or the
@@ -52,13 +52,13 @@ claim aligned with `fc`. This repo is one of five in the product mesh.
 
 ### Repo map
 
-| repo | path | role | public? | changes that ripple across the mesh |
-|---|---|---|---|---|
-| **fc** | `../fc` | control-plane — **source of truth** | 🔒 private | HTTP API, wire/JSON fields, error shapes, lifecycle/state, limits/quotas, behavior |
-| **fc-sdk** | `../fc-sdk` | TypeScript SDK **+ `examples/`** | 🌐 public | public SDK methods, wire types, example apps |
-| **createos-cli** | `../createos-cli` | Go CLI | 🌐 public | commands, flags, help/UX text |
-| **website-04** | `../website-04` (`content/docs/Sandbox`) | public docs | 🌐 public | REST / SDK / CLI reference + concept pages |
-| **createos** | `../createos-claude-plugins` | Claude Code plugin marketplace; `createos-sandbox` plugin over the `createos` CLI | 🌐 public | skills, slash commands, hooks |
+| repo             | path                                     | role                                                                              | public?    | changes that ripple across the mesh                                                |
+| ---------------- | ---------------------------------------- | --------------------------------------------------------------------------------- | ---------- | ---------------------------------------------------------------------------------- |
+| **fc**           | `../fc`                                  | control-plane — **source of truth**                                               | 🔒 private | HTTP API, wire/JSON fields, error shapes, lifecycle/state, limits/quotas, behavior |
+| **fc-sdk**       | `../fc-sdk`                              | TypeScript SDK **+ `examples/`**                                                  | 🌐 public  | public SDK methods, wire types, example apps                                       |
+| **createos-cli** | `../createos-cli`                        | Go CLI                                                                            | 🌐 public  | commands, flags, help/UX text                                                      |
+| **website-04**   | `../website-04` (`content/docs/Sandbox`) | public docs                                                                       | 🌐 public  | REST / SDK / CLI reference + concept pages                                         |
+| **createos**     | `../createos-claude-plugins`             | Claude Code plugin marketplace; `createos-sandbox` plugin over the `createos` CLI | 🌐 public  | skills, slash commands, hooks                                                      |
 
 ### What counts as a shared surface
 

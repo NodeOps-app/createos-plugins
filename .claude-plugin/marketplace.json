@@ -4,8 +4,8 @@
   "owner": { "name": "NodeOps", "url": "https://createos.sh" },
   "plugins": [
     {
-      "name": "createos-sandbox",
-      "source": "./createos-sandbox",
+      "name": "claude-code-plugin",
+      "source": "./packages/claude-code-plugin",
       "description": "Run ad-hoc/heavy/untrusted code in disposable CreateOS Sandboxes; offload, parallel fanout, scratch shell, reusable box with sync, port tunnel, public expose, network clusters, S3 disks, WireGuard VPN, fork, pause/resume, and custom images."
     }
   ]

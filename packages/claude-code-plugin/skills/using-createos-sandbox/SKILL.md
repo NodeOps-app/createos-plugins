@@ -36,20 +36,20 @@ Every `cos` command except `install` and `auth` runs this check first, so an una
 
 ## When to reach for it
 
-| Situation | Why offload |
-|---|---|
-| **Untrusted / unknown code** — a snippet, a fresh npm/pip package, scraped code, a PoC exploit | Isolation. The blast radius is one disposable box, not the laptop. |
-| **Heavy build or test suite** — big `make`, full test run, compile, benchmark | Keeps the laptop free; runs on a box sized for it. |
-| **Parallel/matrix work** — same job across N configs, test shards, batch | `fanout` — each command in its own throwaway box, concurrently, results collected. |
-| **Quick scratch Linux** — try a CLI/tool/snippet on a clean box | `shell` — instant keyless box, destroyed on exit (interactive; the user runs it). |
-| **Clean-room repro** — "works on my machine" bugs, dependency conflicts | Fresh rootfs every time, no host state. |
-| **Live dev loop** — dev server / test watcher / REPL that reacts to edits | Project box + `sync`; Claude edits locally, the box reacts. |
-| **Reach a box-side service** — dev server, DB, API | `tunnel` (private, to `127.0.0.1`) or `expose` (public HTTPS link to share). |
-| **Multi-machine** — distributed system, DB replication, p2p mesh, load test | `cluster up N` — boxes share one private net, reach each other by name. |
-| **Same setup, many variants** — try N branches from one prepared box | `fork` the project box into independent clones. |
-| **Repeated identical setup** — every offload starts with the same install prelude | `template` — bake the toolchain into an image once. |
-| **Done for now, back tomorrow** — warm box you don't want to rebuild | `pause` — snapshot at zero compute cost, `resume` restores it exactly. |
-| **Big data / weights / shared cache** | `disk` — BYO S3 bucket mounted into the box, survives box death. |
+| Situation                                                                                      | Why offload                                                                        |
+| ---------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------- |
+| **Untrusted / unknown code** — a snippet, a fresh npm/pip package, scraped code, a PoC exploit | Isolation. The blast radius is one disposable box, not the laptop.                 |
+| **Heavy build or test suite** — big `make`, full test run, compile, benchmark                  | Keeps the laptop free; runs on a box sized for it.                                 |
+| **Parallel/matrix work** — same job across N configs, test shards, batch                       | `fanout` — each command in its own throwaway box, concurrently, results collected. |
+| **Quick scratch Linux** — try a CLI/tool/snippet on a clean box                                | `shell` — instant keyless box, destroyed on exit (interactive; the user runs it).  |
+| **Clean-room repro** — "works on my machine" bugs, dependency conflicts                        | Fresh rootfs every time, no host state.                                            |
+| **Live dev loop** — dev server / test watcher / REPL that reacts to edits                      | Project box + `sync`; Claude edits locally, the box reacts.                        |
+| **Reach a box-side service** — dev server, DB, API                                             | `tunnel` (private, to `127.0.0.1`) or `expose` (public HTTPS link to share).       |
+| **Multi-machine** — distributed system, DB replication, p2p mesh, load test                    | `cluster up N` — boxes share one private net, reach each other by name.            |
+| **Same setup, many variants** — try N branches from one prepared box                           | `fork` the project box into independent clones.                                    |
+| **Repeated identical setup** — every offload starts with the same install prelude              | `template` — bake the toolchain into an image once.                                |
+| **Done for now, back tomorrow** — warm box you don't want to rebuild                           | `pause` — snapshot at zero compute cost, `resume` restores it exactly.             |
+| **Big data / weights / shared cache**                                                          | `disk` — BYO S3 bucket mounted into the box, survives box death.                   |
 
 Do NOT offload trivial commands, anything needing the user's local secrets/SSH/cloud creds, or work that must touch real local filesystem state.
 
@@ -89,7 +89,7 @@ cos offload -e pypi.org -e files.pythonhosted.org ./suspect 'python3 main.py'
 Two things about this that are easy to get wrong:
 
 - **Egress is unrestricted by default.** A fresh box can reach anything; `cos` prints a one-line notice. Restricting is opt-in with `-p <preset>` or `-e <domain>`. So "run this untrusted thing in a sandbox" is only half done until you pass one of those.
-- **Uploads are one-way.** Box-side changes never touch the local tree unless you ask with `-o <path>`. `.git`, `node_modules`, `target`, `.venv` and friends are excluded from the upload by default — dependencies are meant to be built *inside* the box.
+- **Uploads are one-way.** Box-side changes never touch the local tree unless you ask with `-o <path>`. `.git`, `node_modules`, `target`, `.venv` and friends are excluded from the upload by default — dependencies are meant to be built _inside_ the box.
 
 Long, quiet builds survive a dropped connection: the command runs detached with a heartbeat watcher that re-attaches if the stream dies. The real exit code is preserved.
 
@@ -118,9 +118,9 @@ cos resume               # bring it back exactly as it was
 cos down                 # stop sync + destroy the box
 ```
 
-**`up` is for a box you intend to reuse and then tear down.** A bare "run this in a sandbox" is *not* Pattern B — use `cos offload` (one-shot, auto-destroys) or `cos shell`. Reaching for `up` to satisfy "create a sandbox" makes the box outlive the task, and a later `cos down` destroys it along with anything else sharing that statefile.
+**`up` is for a box you intend to reuse and then tear down.** A bare "run this in a sandbox" is _not_ Pattern B — use `cos offload` (one-shot, auto-destroys) or `cos shell`. Reaching for `up` to satisfy "create a sandbox" makes the box outlive the task, and a later `cos down` destroys it along with anything else sharing that statefile.
 
-**Ending a session: prefer `pause` over `down`** when the box has a warm toolchain the user will want again. `down` destroys and the next session reinstalls everything; `pause` snapshots disk *and* memory, stops compute billing, and brings everything back on `resume` — measured end-to-end at around 6–8 s each way through the CLI. Use `down` when the work is genuinely finished.
+**Ending a session: prefer `pause` over `down`** when the box has a warm toolchain the user will want again. `down` destroys and the next session reinstalls everything; `pause` snapshots disk _and_ memory, stops compute billing, and brings everything back on `resume` — measured end-to-end at around 6–8 s each way through the CLI. Use `down` when the work is genuinely finished.
 
 If a box under this project's name is running but the statefile is gone (another checkout, another agent, created by hand), `up` **refuses** rather than adopting it — adopting silently would let a later `cos down` destroy a box this project never created. `cos up -a` adopts explicitly, and an adopted box is never destroyed by `cos down`.
 
@@ -128,12 +128,12 @@ If a box under this project's name is running but the statefile is gone (another
 
 `cos sync` defaults to **one-way (laptop → box)** — the safe direction for a dev loop.
 
-| Flag | Mode | Behavior |
-|---|---|---|
-| *(default)* | `one-way` | laptop wins; box changes NOT pulled back. **No bleed-back.** |
-| `-2` | `two-way` | bidirectional; box-side writes (build output, deps) **flow back** to the local dir |
-| `-M` | `mirror` | one-way **and deletes** box-side files absent locally |
-| `-x <glob>` | — | exclude paths (repeatable) |
+| Flag        | Mode      | Behavior                                                                           |
+| ----------- | --------- | ---------------------------------------------------------------------------------- |
+| _(default)_ | `one-way` | laptop wins; box changes NOT pulled back. **No bleed-back.**                       |
+| `-2`        | `two-way` | bidirectional; box-side writes (build output, deps) **flow back** to the local dir |
+| `-M`        | `mirror`  | one-way **and deletes** box-side files absent locally                              |
+| `-x <glob>` | —         | exclude paths (repeatable)                                                         |
 
 `.git` and the big regenerable dirs are excluded by default — build deps inside the box with `cos run 'npm ci'` rather than syncing them up. Only reach for `-2` when a box-side process genuinely produces files you need back locally, and never on the user's repo root without saying so first; prefer `offload -o` for pulling artifacts. The local dir must resolve under `$HOME` or `/tmp`. The first sync downloads its sync engine, so allow a minute before edits propagate.
 
@@ -180,8 +180,8 @@ Disk data lives in the user's own S3 account and region. `--path-style` is neede
 
 Load these when the task actually needs the depth — the summaries above are enough for most work.
 
-| File | Read it for |
-|---|---|
-| `references/offload-and-egress.md` | offload flag table, egress presets and how enforcement really behaves, fanout, upload excludes, heavy-build OOM/disk/bandwidth traps |
-| `references/networking.md` | choosing between tunnel/expose/cluster/vpn, cluster DNS names, expose gotchas, WireGuard setup |
+| File                                 | Read it for                                                                                                                                                                |
+| ------------------------------------ | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `references/offload-and-egress.md`   | offload flag table, egress presets and how enforcement really behaves, fanout, upload excludes, heavy-build OOM/disk/bandwidth traps                                       |
+| `references/networking.md`           | choosing between tunnel/expose/cluster/vpn, cluster DNS names, expose gotchas, WireGuard setup                                                                             |
 | `references/lifecycle-and-images.md` | pause/resume, auto-pause tuning, fork caveats, built-in rootfs vs custom templates, env vars, remote editor, self-terminating jobs, single-file transfer, measured timings |
