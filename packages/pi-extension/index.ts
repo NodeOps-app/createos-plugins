@@ -429,13 +429,21 @@ export default function (pi: ExtensionAPI) {
       console.error("CreateOS: failed to clean up sync key", cleanupError);
     }
 
+    // The TUI is already stopped by this point on a normal quit (Ctrl+D, double
+    // Ctrl+C, /quit) — ctx.ui.notify cannot render. Write straight to stdout,
+    // same trick pi core uses for its own post-shutdown "resume session" hint.
     const persisted = _ctx.sessionManager.getSessionFile() !== undefined;
-    if (!persisted) {
-      try {
-        await cli.destroySandbox(pi, current.sandboxId);
-      } catch (destroyError) {
-        console.error("CreateOS: failed to destroy sandbox", destroyError);
-      }
+    if (persisted) {
+      process.stdout.write(
+        `CreateOS: sandbox ${shortId(current.sandboxId)} is still running. Resume this session to reattach, or run: createos sandbox rm ${current.sandboxId}\n`,
+      );
+      return;
+    }
+    process.stdout.write(`CreateOS: destroying sandbox ${shortId(current.sandboxId)}…\n`);
+    try {
+      await cli.destroySandbox(pi, current.sandboxId);
+    } catch (destroyError) {
+      console.error("CreateOS: failed to destroy sandbox", destroyError);
     }
   });
 }
