@@ -6,11 +6,12 @@ Pi coding agent extension that runs all tool calls inside a remote [CreateOS San
 
 ```bash
 curl -sfL https://raw.githubusercontent.com/NodeOps-app/createos-cli/main/install.sh | sh -
+# Install from the repository root. The root manifest exposes this extension.
 pi install git:github.com/NodeOps-app/createos-claude-plugins
 createos login
 ```
 
-That's it. No API keys, no env vars.
+The repository root forwards Pi's package entry point to this extension. No API keys, no env vars.
 
 ## Usage
 

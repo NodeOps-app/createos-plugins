@@ -42,8 +42,8 @@ Heavy builds, flaky test suites, and untrusted code don't belong on your laptop.
 **Pi:**
 
 ```bash
-# 1. Install the extension
-pi install npm:@createos/pi
+# 1. Install the extension from this repository
+pi install git:github.com/NodeOps-app/createos-claude-plugins
 
 # 2. Start a session with all tools routed to a remote sandbox
 pi --createos
