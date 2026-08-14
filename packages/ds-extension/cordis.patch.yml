@@ -1,0 +1,147 @@
+# The @createos/dsh bundle patch: moves the agent's execution world into a
+# remote CreateOS Sandbox, applied after the dsh-base layer.
+#
+# Only three capabilities change hands. `dsh-tool-bash`, `dsh-tool-fs`,
+# `dsh-tool-fs-search`, `dsh-terminal-bash`, and `dsh-lsp-stdio` are NOT forked:
+# they delegate every execution-world operation to `ctx.fs` and
+# `ctx.subprocess`, so replacing those two providers is what puts their work
+# inside the sandbox.
+#
+# Configuration reads the environment so a profile can enable this bundle
+# without editing YAML. CREATEOS_SANDBOX_API_KEY is consumed by the SDK itself
+# and is never forwarded into the sandbox.
+
+- insert:
+    # Owns one sandbox for the process lifetime and shares its SDK handle.
+    - id: createos
+      name: '@createos/dsh'
+      config:
+        shape: !!js process.env.CREATEOS_SHAPE ?? 's-2vcpu-2gb'
+        rootfs: !!js process.env.CREATEOS_ROOTFS
+        cwd: !!js process.env.CREATEOS_CWD ?? process.cwd()
+        sandboxId: !!js process.env.CREATEOS_SANDBOX_ID
+        ingress: !!js process.env.CREATEOS_INGRESS === '1'
+        disposeAction: !!js process.env.CREATEOS_DISPOSE ?? 'destroy'
+
+    - id: fs-createos
+      name: '@createos/dsh/fs'
+
+    - id: subprocess-createos
+      name: '@createos/dsh/subprocess'
+
+# One context may hold only one provider per service name — a second
+# registration of `fs` or `subprocess` is a duplicate-service error, not a
+# fallback. The local execution world is therefore switched off rather than
+# layered under the remote one.
+
+# Every overridden row restates `name:` so this patch is readable on its own and
+# fails loudly if a future dsh-base renames the plugin behind an id.
+
+# `dsh-fs-sandbox` also enforces same-world (bwrap/Landlock/Seatbelt)
+# confinement, which has no meaning once the files live in another machine.
+- id: fs-sandbox
+  name: '@deepseek-ai/dsh-fs-sandbox'
+  disabled: true
+
+- id: subprocess
+  name: '@deepseek-ai/dsh-subprocess-local'
+  disabled: true
+
+# The `sandbox` row (`dsh-sandbox-local`) deliberately stays ENABLED even though
+# its host backends are meaningless for a remote world: `dsh-bash-sandbox`
+# INJECTS `sandbox`, so disabling it strands the whole shell chain in PENDING
+# (`bash-sandbox` never provides `shell`, so `dsh-tool-bash` and
+# `dsh-permission-presets` never activate and boot fails). Neutralize the
+# confinement through the policy below, not by removing the provider.
+
+# This row is what actually makes bash work against a remote execution world.
+#
+# `dsh-bash-sandbox` short-circuits on `danger-full-access` and delegates
+# straight to `ctx.subprocess` (see its `start()`); under any other mode it
+# resolves a HOST confinement backend and wraps argv in it. That wrapper is
+# nonsensical here — a macOS host builds a `sandbox-exec …` argv which is then
+# handed to this provider and executed inside a Linux sandbox, dying with
+# `exec: sandbox-exec: not found`. With no usable host backend it instead
+# refuses to run at all rather than run unconfined.
+#
+# `danger-full-access` is therefore the honest description of the posture, and
+# matches the harness's own remote-world composition (the e2b family's
+# composition test mounts the policy service exactly this way). It is NOT a
+# loosening: the isolation boundary moved from a same-world confinement backend
+# to the CreateOS microVM, which is the stronger boundary. `workspaceRoot` must
+# name a path inside the sandbox, not on the host.
+#
+# A patch replaces a row's whole `config`, so both keys are restated here.
+- id: sandbox-policy
+  name: '@deepseek-ai/dsh-sandbox-policy'
+  config:
+    mode: danger-full-access
+    workspaceRoot: !!js process.env.CREATEOS_CWD ?? process.cwd()
+
+# The shell executor's default working directory is a HOST path
+# (`bash-local` resolves `request.workdir ?? config.cwd ?? process.cwd()`), and
+# the bash tool separately resolves `workdir` from the session workspace root,
+# which the harness also seeds from `process.cwd()`. The runtime therefore
+# mirrors the host's cwd INSIDE the sandbox by default, and this row points the
+# executor at the same path. Rooting the sandbox anywhere else makes the agent's
+# first command fail to chdir (`env -C` exits 125) and the model improvise a
+# fallback like `/tmp`.
+#
+# `timeoutMs` is restated from the base row because a patch replaces the whole
+# `config`; omitting it here silently dropped the base's 60s command timeout.
+# `disabled: false` is deliberate, not noise. The base row carries
+# `disabled: !!js process.platform === 'win32'`, which is right for a LOCAL
+# execution world and wrong here: the commands run in a remote Linux sandbox, so
+# the host platform is irrelevant and bash must stay available even when dsh
+# itself runs on Windows. `tool-bash` carries the same guard and is re-enabled
+# below for the same reason.
+- id: bash-sandbox
+  name: '@deepseek-ai/dsh-bash-sandbox'
+  disabled: false
+  config:
+    cwd: !!js process.env.CREATEOS_CWD ?? process.cwd()
+    timeoutMs: 60000
+
+- id: tool-bash
+  name: '@deepseek-ai/dsh-tool-bash'
+  disabled: false
+
+# The base derives this from DSH_PERMISSION_MODE, so with that variable unset it
+# stays `ask` while the preset below says `danger-full-access` — an inconsistency
+# that only stays hidden on a surface with no approval channel (headless).
+# On the Web/TUI surface it produces prompts, or the
+# "escalation requires approval, but no approval channel is available" failure.
+# The microVM is the boundary, so state the no-prompt policy directly.
+- id: approval
+  name: '@deepseek-ai/dsh-user-approval'
+  config:
+    policy: never
+
+# `dsh-permission-presets` derives its default preset by matching the composed
+# (sandbox, approval) defaults against the preset table. The base pairs
+# `danger-full-access` with `approval: never`, so the mode set above no longer
+# matches the base's `approval: ask` and the service fails the load with
+# "composed sandbox and approval defaults match no preset". Naming the preset
+# explicitly is the documented fix.
+#
+# SECURITY POSTURE — read before enabling this bundle. This makes the agent run
+# unconfined and unprompted *inside the CreateOS sandbox*: no per-command
+# approval, no same-world confinement. That is the point of a remote execution
+# world — the microVM is the trust boundary — but it does mean the agent can do
+# anything it likes to the sandbox, and reach whatever the sandbox's egress
+# allows. Restrict `egress` on the runtime row for untrusted work.
+#
+# Only the full-access preset is exposed. The base's `read-only` and
+# `workspace-write` presets describe HOST filesystem confinement, which cannot
+# describe a microVM boundary: selecting one would ask the bash executor to
+# re-engage a host backend that is unavailable and meaningless here, and it
+# would refuse to run. Offering a mode that cannot work is a dishonest surface,
+# so the selectable set is narrowed to the one that is true.
+- id: permission
+  name: '@deepseek-ai/dsh-permission-presets'
+  config:
+    defaultPreset: danger-full-access
+    presets:
+      danger-full-access:
+        sandbox: danger-full-access
+        approval: never

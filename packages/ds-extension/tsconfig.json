@@ -1,0 +1,30 @@
+{
+  // Mirrors the harness's own strictness (tsconfig.base.json in
+  // deepseek-ai/deepseek-harness) so this provider compiles under the same
+  // rules its abstract services were written against. exactOptionalPropertyTypes
+  // in particular decides whether `{ ...(x ? { size } : {}) }` spreads are
+  // required instead of `size: x ?? undefined`.
+  "compilerOptions": {
+    "target": "es2024",
+    "lib": ["es2024"],
+    "module": "esnext",
+    "moduleResolution": "bundler",
+    "allowImportingTsExtensions": true,
+    "rewriteRelativeImportExtensions": true,
+    "esModuleInterop": true,
+    "skipLibCheck": true,
+    "declaration": true,
+    "declarationMap": true,
+    "sourceMap": true,
+    "strict": true,
+    "noUncheckedIndexedAccess": true,
+    "exactOptionalPropertyTypes": true,
+    "noImplicitOverride": true,
+    "noFallthroughCasesInSwitch": true,
+    "noUnusedLocals": true,
+    "noUnusedParameters": true,
+    "types": ["node", "bun"],
+    "noEmit": true
+  },
+  "include": ["src/**/*.ts"]
+}
