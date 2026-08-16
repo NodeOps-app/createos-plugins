@@ -29,9 +29,15 @@ Pi agent (local)  →  createos CLI  →  CreateOS API  →  Sandbox
 ## Pi extension best practices (enforced)
 
 - **snake_case** tool names, all prefixed `sandbox_`
-- **promptGuidelines** always name the specific tool: `"Use sandbox_xyz when..."`
-- **description** describes what the tool does, never when to use it
-- **promptSnippet** is a brief one-liner for the system prompt
+- **description** describes what the tool does, never when to use it. Preconditions
+  ("the source must be paused first") belong here, not in a guideline
+- **promptSnippet** is a brief one-liner for the system prompt. Every tool has one —
+  it is what lists the tool in the prompt's `Available tools` section
+- **promptGuidelines** only where the bullet adds signal `description` + `promptSnippet`
+  cannot: cross-tool routing, preference order, or a warning. A bullet that restates the
+  description is deleted — it costs tokens every turn and teaches the model nothing.
+  When present, a bullet must name its tool (`"Use sandbox_xyz when..."`), because Pi
+  appends all bullets flat into one `Guidelines` section with no tool prefix
 - **Single-purpose tools** — no action enum parameters
 - **`terminate: true`** on destructive tools (`sandbox_pause`, `sandbox_destroy`)
 - **Signal handling** on built-in tool replacements (find/grep check `signal?.aborted`)
@@ -150,9 +156,10 @@ were patched in `createos-cli` to support it via `output.Render()`.
 2. Register the tool in `src/tools.ts` with:
    - `name: 'sandbox_<category>_<action>'`
    - `label: 'Title Case'`
-   - `description:` what it does (1-2 sentences)
+   - `description:` what it does (1-2 sentences), plus any precondition
    - `promptSnippet:` one-liner
-   - `promptGuidelines: ['Use sandbox_<name> when...']`
+   - `promptGuidelines:` only if a bullet adds routing/ordering/warning signal the
+     description and snippet do not already carry — otherwise omit the field
    - `parameters: Type.Object({...})`
    - `execute()` with try/catch returning `txt()` on error
 3. If destructive, add `terminate: true` to the return value

@@ -118,18 +118,15 @@ export function registerTools(pi: ExtensionAPI, getActive: () => ToolSandbox | n
     name: "sandbox_create",
     label: "Create Sandbox",
     description:
-      "Create an additional sandbox. Use this when the user needs multiple sandboxes — e.g. multi-node clusters, " +
-      "separate database servers, microservice setups. The new sandbox can be joined to a network so it can communicate with others.",
+      "Create an additional sandbox, optionally joined to networks so it can reach other sandboxes.",
     promptSnippet: "Create a new sandbox",
     promptGuidelines: [
-      "Use sandbox_create when the user needs additional sandboxes beyond the current one.",
-      "Use sandbox_create with networks to connect the new sandbox to existing sandboxes.",
-      "After creating, use sandbox_network_attach if the sandbox needs to join an existing network.",
+      "Use sandbox_create for extra sandboxes (multi-node clusters, separate database or service hosts); pass networks, or sandbox_network_attach later, to connect them.",
     ],
     parameters: Type.Object({
       shape: Type.Optional(
         Type.String({
-          description: "Sandbox size (default: s-2vcpu-2gb). See sandbox_shapes for options.",
+          description: "Sandbox size (default: s-2vcpu-2gb); see sandbox_shapes.",
         }),
       ),
       rootfs: Type.Optional(Type.String({ description: "Base image (default: devbox:1)" })),
@@ -161,13 +158,10 @@ export function registerTools(pi: ExtensionAPI, getActive: () => ToolSandbox | n
   pi.registerTool({
     name: "sandbox_exec",
     label: "Exec on Sandbox",
-    description:
-      "Run a command on a specific sandbox by ID. Use this to execute commands on sandboxes other than the current one — " +
-      "e.g. setting up a second node in a cluster, installing software on a database sandbox, etc.",
+    description: "Run a command on a specific sandbox by ID.",
     promptSnippet: "Run a command on a specific sandbox",
     promptGuidelines: [
-      "Use sandbox_exec to run commands on sandboxes created with sandbox_create.",
-      "The built-in bash tool runs on the current sandbox. Use sandbox_exec for any other sandbox.",
+      "The bash tool runs on the current sandbox; use sandbox_exec for any other sandbox.",
     ],
     parameters: Type.Object({
       sandbox_id: Type.String({ description: "ID of the target sandbox" }),
@@ -192,11 +186,8 @@ export function registerTools(pi: ExtensionAPI, getActive: () => ToolSandbox | n
   pi.registerTool({
     name: "sandbox_info",
     label: "Sandbox Info",
-    description: "Get the current sandbox status, IP, shape, region, and ingress URL.",
+    description: "Get a sandbox's status, IP, shape, region, and ingress URL.",
     promptSnippet: "Get sandbox details",
-    promptGuidelines: [
-      "Use sandbox_info to check the current sandbox status, IP address, or ingress URL.",
-    ],
     parameters: Type.Object({
       sandbox_id: Type.Optional(Type.String({ description: "Sandbox ID (defaults to current)" })),
     }),
@@ -227,11 +218,8 @@ export function registerTools(pi: ExtensionAPI, getActive: () => ToolSandbox | n
   pi.registerTool({
     name: "sandbox_list",
     label: "List Sandboxes",
-    description: "List all sandboxes owned by the user.",
+    description: "List all sandboxes owned by the user, running and paused.",
     promptSnippet: "List all sandboxes",
-    promptGuidelines: [
-      "Use sandbox_list to see all sandboxes the user owns, including paused and running ones.",
-    ],
     parameters: Type.Object({}),
     async execute(_id, _params, signal) {
       if (signal?.aborted) throw new Error("aborted");
@@ -253,12 +241,9 @@ export function registerTools(pi: ExtensionAPI, getActive: () => ToolSandbox | n
   pi.registerTool({
     name: "sandbox_pause",
     label: "Pause Sandbox",
-    description:
-      "Pause the sandbox, saving its state. The sandbox becomes unavailable until resumed.",
+    description: "Pause a sandbox, saving its state. It stays unavailable until resumed.",
     promptSnippet: "Pause a sandbox",
-    promptGuidelines: [
-      "Use sandbox_pause to snapshot and pause a sandbox. WARNING: this disconnects the current session if pausing the active sandbox.",
-    ],
+    promptGuidelines: ["sandbox_pause on the active sandbox disconnects the current session."],
     parameters: Type.Object({
       sandbox_id: Type.Optional(Type.String({ description: "Sandbox ID (defaults to current)" })),
     }),
@@ -285,7 +270,6 @@ export function registerTools(pi: ExtensionAPI, getActive: () => ToolSandbox | n
     label: "Resume Sandbox",
     description: "Resume a paused sandbox.",
     promptSnippet: "Resume a paused sandbox",
-    promptGuidelines: ["Use sandbox_resume to bring a paused sandbox back to running state."],
     parameters: Type.Object({
       sandbox_id: Type.String({ description: "ID of the paused sandbox to resume" }),
     }),
@@ -305,11 +289,9 @@ export function registerTools(pi: ExtensionAPI, getActive: () => ToolSandbox | n
   pi.registerTool({
     name: "sandbox_fork",
     label: "Fork Sandbox",
-    description: "Clone a paused sandbox into a brand-new sandbox with the same state.",
+    description:
+      "Clone a sandbox into a new sandbox with the same state. The source must be paused first.",
     promptSnippet: "Fork a sandbox",
-    promptGuidelines: [
-      "Use sandbox_fork to create a copy of a sandbox. The source sandbox must be paused first.",
-    ],
     parameters: Type.Object({
       sandbox_id: Type.Optional(
         Type.String({ description: "Sandbox ID to fork (defaults to current)" }),
@@ -346,9 +328,6 @@ export function registerTools(pi: ExtensionAPI, getActive: () => ToolSandbox | n
     label: "Destroy Sandbox",
     description: "Permanently delete a sandbox. This cannot be undone.",
     promptSnippet: "Destroy a sandbox",
-    promptGuidelines: [
-      "Use sandbox_destroy to permanently delete a sandbox. Requires an explicit sandbox_id.",
-    ],
     parameters: Type.Object({
       sandbox_id: Type.String({ description: "ID of the sandbox to destroy" }),
     }),
@@ -368,11 +347,8 @@ export function registerTools(pi: ExtensionAPI, getActive: () => ToolSandbox | n
   pi.registerTool({
     name: "sandbox_ingress",
     label: "Toggle Ingress",
-    description: "Enable or disable public HTTPS URL access for a sandbox.",
+    description: "Enable or disable the public HTTPS URL for a sandbox.",
     promptSnippet: "Toggle public URL on/off",
-    promptGuidelines: [
-      "Use sandbox_ingress to enable or disable the public HTTPS URL for a sandbox.",
-    ],
     parameters: Type.Object({
       enabled: Type.Boolean({ description: "true to enable, false to disable" }),
       sandbox_id: Type.Optional(Type.String({ description: "Sandbox ID (defaults to current)" })),
@@ -402,11 +378,8 @@ export function registerTools(pi: ExtensionAPI, getActive: () => ToolSandbox | n
     name: "sandbox_firewall",
     label: "Set Firewall",
     description:
-      "Set egress firewall rules for a sandbox. Pass an empty list to allow all outbound traffic.",
+      "Restrict which domains or IPs a sandbox can reach. Empty list allows all outbound traffic.",
     promptSnippet: "Set sandbox egress rules",
-    promptGuidelines: [
-      "Use sandbox_firewall to restrict which domains/IPs the sandbox can reach. Empty rules = allow all.",
-    ],
     parameters: Type.Object({
       rules: Type.Array(Type.String(), {
         description:
@@ -436,11 +409,8 @@ export function registerTools(pi: ExtensionAPI, getActive: () => ToolSandbox | n
   pi.registerTool({
     name: "sandbox_bandwidth",
     label: "Check Bandwidth",
-    description: "Check bandwidth usage and quota for a sandbox.",
+    description: "Check bandwidth usage, quota, and cap status for a sandbox.",
     promptSnippet: "Check bandwidth usage",
-    promptGuidelines: [
-      "Use sandbox_bandwidth to check how much bandwidth the sandbox has used and whether it is capped.",
-    ],
     parameters: Type.Object({
       sandbox_id: Type.Optional(Type.String({ description: "Sandbox ID (defaults to current)" })),
     }),
@@ -466,9 +436,6 @@ export function registerTools(pi: ExtensionAPI, getActive: () => ToolSandbox | n
     label: "List Shapes",
     description: "List available sandbox sizes (vCPU, RAM).",
     promptSnippet: "List available sandbox sizes",
-    promptGuidelines: [
-      "Use sandbox_shapes to see what sandbox sizes are available before creating a new sandbox.",
-    ],
     parameters: Type.Object({}),
     async execute(_id, _params, signal) {
       if (signal?.aborted) throw new Error("aborted");
@@ -491,9 +458,6 @@ export function registerTools(pi: ExtensionAPI, getActive: () => ToolSandbox | n
     label: "List Images",
     description: "List available base images (rootfs) for sandbox creation.",
     promptSnippet: "List available sandbox base images",
-    promptGuidelines: [
-      "Use sandbox_images to see what base images are available before creating a new sandbox.",
-    ],
     parameters: Type.Object({}),
     async execute(_id, _params, signal) {
       if (signal?.aborted) throw new Error("aborted");
@@ -516,9 +480,6 @@ export function registerTools(pi: ExtensionAPI, getActive: () => ToolSandbox | n
     label: "Preview URL",
     description: "Get the public HTTPS URL for a port served inside the sandbox.",
     promptSnippet: "Get a public URL for a sandbox port",
-    promptGuidelines: [
-      "Use sandbox_preview_url after starting a server to give the user a clickable public link.",
-    ],
     parameters: Type.Object({
       port: Type.Integer({
         minimum: 1,
@@ -552,8 +513,7 @@ export function registerTools(pi: ExtensionAPI, getActive: () => ToolSandbox | n
     description: "Forward a sandbox port to localhost on the user's machine. No setup needed.",
     promptSnippet: "Forward a sandbox port to localhost",
     promptGuidelines: [
-      "Use sandbox_tunnel when the user wants to access a sandbox port from their machine.",
-      "Prefer sandbox_tunnel over sandbox_device_attach — sandbox_tunnel requires no setup.",
+      "Prefer sandbox_tunnel over sandbox_device_attach for reaching a sandbox port — it needs no setup.",
     ],
     parameters: Type.Object({
       remote_port: Type.Integer({
@@ -590,18 +550,14 @@ export function registerTools(pi: ExtensionAPI, getActive: () => ToolSandbox | n
     name: "sandbox_sync",
     label: "Sync Directory",
     description:
-      "Mount, sync, or mirror a local directory from the user's machine into the sandbox. " +
-      "Bidirectional by default — changes on either side propagate to the other. Runs in the background until the session ends.",
+      "Mount, sync, or mirror a local directory into the sandbox. Two-way by default — changes on " +
+      "either side propagate. Runs in the background until the session ends.",
     promptSnippet: "Mount/sync a local directory into the sandbox",
     promptGuidelines: [
-      'Use sandbox_sync when the user says "mount", "sync", "mirror", or "upload directory" into the sandbox.',
-      'Use sandbox_sync with mode "one-way" if only local changes should push to the sandbox.',
-      'Use sandbox_sync with mode "mirror" to make the sandbox directory identical to the local one.',
+      'Use sandbox_sync when the user says "mount", "sync", "mirror", or "upload directory".',
     ],
     parameters: Type.Object({
-      local_dir: Type.String({
-        description: "Absolute path to the local directory on the user's machine",
-      }),
+      local_dir: Type.String({ description: "Absolute path on the user's machine" }),
       remote_dir: Type.String({
         description: "Absolute path inside the sandbox (e.g. /root/project)",
       }),
@@ -640,11 +596,8 @@ export function registerTools(pi: ExtensionAPI, getActive: () => ToolSandbox | n
   pi.registerTool({
     name: "sandbox_network_create",
     label: "Create Network",
-    description: "Create a new private network for sandbox-to-sandbox communication.",
+    description: "Create a private network for sandbox-to-sandbox communication.",
     promptSnippet: "Create a private network",
-    promptGuidelines: [
-      "Use sandbox_network_create when sandboxes need to communicate with each other.",
-    ],
     parameters: Type.Object({
       name: Type.String({ description: "Network name" }),
     }),
@@ -667,9 +620,6 @@ export function registerTools(pi: ExtensionAPI, getActive: () => ToolSandbox | n
     label: "List Networks",
     description: "List all private networks owned by the user.",
     promptSnippet: "List private networks",
-    promptGuidelines: [
-      "Use sandbox_network_list to see existing networks before creating or attaching.",
-    ],
     parameters: Type.Object({}),
     async execute(_id, _params, signal) {
       if (signal?.aborted) throw new Error("aborted");
@@ -687,11 +637,8 @@ export function registerTools(pi: ExtensionAPI, getActive: () => ToolSandbox | n
   pi.registerTool({
     name: "sandbox_network_show",
     label: "Show Network",
-    description: "Show network details including member sandbox IPs.",
+    description: "Show network details, including member sandboxes and their IPs.",
     promptSnippet: "Show network members and their IPs",
-    promptGuidelines: [
-      "Use sandbox_network_show to see which sandboxes are on a network and their IPs for configuring connections.",
-    ],
     parameters: Type.Object({
       name: Type.String({ description: "Network name or id" }),
     }),
@@ -715,11 +662,8 @@ export function registerTools(pi: ExtensionAPI, getActive: () => ToolSandbox | n
   pi.registerTool({
     name: "sandbox_network_attach",
     label: "Attach to Network",
-    description: "Attach the current sandbox to a private network.",
+    description: "Attach the current sandbox to a private network so it can reach other members.",
     promptSnippet: "Join a sandbox to a network",
-    promptGuidelines: [
-      "Use sandbox_network_attach to join the current sandbox to a network so it can reach other members.",
-    ],
     parameters: Type.Object({
       name: Type.String({ description: "Network name or id" }),
     }),
@@ -741,7 +685,6 @@ export function registerTools(pi: ExtensionAPI, getActive: () => ToolSandbox | n
     label: "Detach from Network",
     description: "Detach the current sandbox from a private network.",
     promptSnippet: "Remove a sandbox from a network",
-    promptGuidelines: ["Use sandbox_network_detach to remove the current sandbox from a network."],
     parameters: Type.Object({
       name: Type.String({ description: "Network name or id" }),
     }),
@@ -761,11 +704,8 @@ export function registerTools(pi: ExtensionAPI, getActive: () => ToolSandbox | n
   pi.registerTool({
     name: "sandbox_network_delete",
     label: "Delete Network",
-    description: "Delete a private network. The network must have no members.",
+    description: "Delete a private network. Detach all sandboxes first — it must have no members.",
     promptSnippet: "Delete a network",
-    promptGuidelines: [
-      "Use sandbox_network_delete to remove a network. Detach all sandboxes first.",
-    ],
     parameters: Type.Object({
       name: Type.String({ description: "Network name or id" }),
     }),
@@ -786,11 +726,9 @@ export function registerTools(pi: ExtensionAPI, getActive: () => ToolSandbox | n
     name: "sandbox_disk_create",
     label: "Create Disk",
     description:
-      "Register an S3-compatible bucket as a persistent disk that can be mounted into sandboxes.",
+      "Register an S3-compatible bucket as a persistent disk that can be mounted into sandboxes. " +
+      "The data survives sandbox destroy.",
     promptSnippet: "Register an S3 bucket as a mountable disk",
-    promptGuidelines: [
-      "Use sandbox_disk_create when the user wants persistent storage that survives sandbox destroy.",
-    ],
     parameters: Type.Object({
       name: Type.String({ description: "Disk name" }),
       bucket: Type.String({ description: "S3 bucket name" }),
@@ -833,9 +771,6 @@ export function registerTools(pi: ExtensionAPI, getActive: () => ToolSandbox | n
     label: "List Disks",
     description: "List all S3 disks registered by the user.",
     promptSnippet: "List registered disks",
-    promptGuidelines: [
-      "Use sandbox_disk_list to see available disks before attaching one to a sandbox.",
-    ],
     parameters: Type.Object({}),
     async execute(_id, _params, signal) {
       if (signal?.aborted) throw new Error("aborted");
@@ -855,11 +790,8 @@ export function registerTools(pi: ExtensionAPI, getActive: () => ToolSandbox | n
   pi.registerTool({
     name: "sandbox_disk_show",
     label: "Show Disk",
-    description: "Show details for a registered disk.",
+    description: "Show a registered disk's config and the sandboxes it is attached to.",
     promptSnippet: "Show disk details",
-    promptGuidelines: [
-      "Use sandbox_disk_show to see a disk's configuration and which sandboxes it is attached to.",
-    ],
     parameters: Type.Object({
       name: Type.String({ description: "Disk name or id" }),
     }),
@@ -880,11 +812,8 @@ export function registerTools(pi: ExtensionAPI, getActive: () => ToolSandbox | n
   pi.registerTool({
     name: "sandbox_disk_delete",
     label: "Delete Disk",
-    description: "Delete a registered disk. The disk must not be attached to any sandbox.",
+    description: "Delete a disk registration. Detach it from all sandboxes first.",
     promptSnippet: "Delete a disk",
-    promptGuidelines: [
-      "Use sandbox_disk_delete to remove a disk registration. Detach it from all sandboxes first.",
-    ],
     parameters: Type.Object({
       name: Type.String({ description: "Disk name or id" }),
     }),
@@ -904,9 +833,6 @@ export function registerTools(pi: ExtensionAPI, getActive: () => ToolSandbox | n
     label: "Attach Disk",
     description: "Mount a registered disk into a running sandbox at a given path.",
     promptSnippet: "Mount a disk into a sandbox",
-    promptGuidelines: [
-      "Use sandbox_disk_attach to mount persistent storage into a sandbox. The mount path must be absolute (e.g. /mnt/data).",
-    ],
     parameters: Type.Object({
       disk_name: Type.String({ description: "Disk name or id" }),
       mount_path: Type.String({
@@ -932,9 +858,6 @@ export function registerTools(pi: ExtensionAPI, getActive: () => ToolSandbox | n
     label: "Detach Disk",
     description: "Unmount a disk from a sandbox. The bucket data is untouched.",
     promptSnippet: "Unmount a disk from a sandbox",
-    promptGuidelines: [
-      "Use sandbox_disk_detach to unmount a disk. The data in the bucket remains.",
-    ],
     parameters: Type.Object({
       disk_name: Type.String({ description: "Disk name or id" }),
       mount_path: Type.String({ description: "Mount path to detach" }),
@@ -959,12 +882,11 @@ export function registerTools(pi: ExtensionAPI, getActive: () => ToolSandbox | n
     name: "sandbox_device_register",
     label: "Register Device",
     description:
-      "Register the user's machine as a device so it can access sandbox networks directly. " +
-      "This is a one-time operation. Requires wireguard-tools installed on the host.",
+      "Register the user's machine as a device for direct access to sandbox networks. " +
+      "One-time; needs wireguard-tools on the host.",
     promptSnippet: "Register this machine for direct sandbox access",
     promptGuidelines: [
-      "Use sandbox_device_register before sandbox_device_attach or sandbox_vpn_up.",
-      "Use sandbox_device_register only if sandbox_device_status shows no device registered.",
+      "Use sandbox_device_register before sandbox_device_attach or sandbox_vpn_up, and only if sandbox_device_status shows no device.",
     ],
     parameters: Type.Object({
       name: Type.Optional(Type.String({ description: "Device name (defaults to hostname)" })),
@@ -989,11 +911,8 @@ export function registerTools(pi: ExtensionAPI, getActive: () => ToolSandbox | n
   pi.registerTool({
     name: "sandbox_device_status",
     label: "Device Status",
-    description: "Check if the user has a registered device for direct sandbox access.",
+    description: "Check whether the user has a registered device for direct sandbox access.",
     promptSnippet: "Check device registration status",
-    promptGuidelines: [
-      "Use sandbox_device_status to check if the user has a device registered before using sandbox_device_attach or sandbox_vpn_up.",
-    ],
     parameters: Type.Object({}),
     async execute(_id, _params, signal) {
       if (signal?.aborted) throw new Error("aborted");
@@ -1019,13 +938,9 @@ export function registerTools(pi: ExtensionAPI, getActive: () => ToolSandbox | n
     name: "sandbox_vpn_up",
     label: "Start VPN",
     description:
-      "Tell the user to start the VPN tunnel. This command requires sudo and must be run by the user in a separate terminal. " +
-      "Returns the exact command the user should run.",
+      "Return the command the user must run to start the VPN tunnel. It needs sudo and a separate " +
+      "terminal, so this tool does not start the VPN itself.",
     promptSnippet: "Get the VPN start command for the user to run",
-    promptGuidelines: [
-      "Use sandbox_vpn_up after sandbox_device_register and sandbox_device_attach.",
-      "sandbox_vpn_up does NOT start the VPN — it tells the user the command to run in another terminal.",
-    ],
     parameters: Type.Object({}),
     async execute(_id, _params, signal) {
       if (signal?.aborted) throw new Error("aborted");
@@ -1046,11 +961,8 @@ export function registerTools(pi: ExtensionAPI, getActive: () => ToolSandbox | n
   pi.registerTool({
     name: "sandbox_device_attach",
     label: "Attach Device to Network",
-    description: "Attach the user's device to a network so they can access sandbox IPs directly.",
+    description: "Attach the user's device to a network so they can reach sandbox IPs directly.",
     promptSnippet: "Give user's machine direct access to a network",
-    promptGuidelines: [
-      "Use sandbox_device_attach to give the user direct IP access. After attaching, tell them to run `createos sb vpn up`.",
-    ],
     parameters: Type.Object({
       network: Type.String({ description: "Network name or id" }),
     }),
@@ -1076,9 +988,6 @@ export function registerTools(pi: ExtensionAPI, getActive: () => ToolSandbox | n
     label: "Detach Device from Network",
     description: "Remove the user's device from a network.",
     promptSnippet: "Remove device access to a network",
-    promptGuidelines: [
-      "Use sandbox_device_detach to revoke the user's direct access to a network.",
-    ],
     parameters: Type.Object({
       network: Type.String({ description: "Network name or id" }),
     }),

@@ -15,6 +15,7 @@ reworking the thing it covers.
 | ADR                                        | Decision                                                                                 | Status                     |
 | ------------------------------------------ | ---------------------------------------------------------------------------------------- | -------------------------- |
 | [0001](./docs/adr/0001-cos-bash-driver.md) | `cos`, a bash driver, as the plugin's execution engine — not the `createos` CLI directly | accepted, **under review** |
+| [0003](./docs/adr/0003-pi-extension-prompt-surface.md) | pi-extension prompt surface: `promptGuidelines` only where they add signal | accepted |
 
 ADR-0001 is load-bearing for anyone touching `scripts/cos`, the skill, or the
 slash commands. Two things it records that are easy to trip over:

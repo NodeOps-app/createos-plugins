@@ -3,3 +3,9 @@ bun.lock
 package-lock.json
 .pi*
 .claude
+.env
+.env.*
+!.env.example
+lib/
+docs
+.mcp.json
