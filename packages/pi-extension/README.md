@@ -23,17 +23,23 @@ Everything works inside the session — sandbox, networks, device access, port f
 
 ### Optional flags
 
-| Flag               | Purpose                                          |
-| ------------------ | ------------------------------------------------ |
-| `--shape <shape>`  | Sandbox size (default: `s-2vcpu-2gb`)            |
-| `--rootfs <name>`  | Base image or template                           |
-| `--network <name>` | Network(s) to join at creation (comma-separated) |
-| `--sync-once`      | Copy the host project to `/root/workspace` first |
-| `--watch`          | Keep the host project and sandbox in sync        |
+| Flag                          | Purpose                                          |
+| ----------------------------- | ------------------------------------------------ |
+| `--createos-shape <shape>`    | Sandbox shape (default: `s-2vcpu-2gb`)           |
+| `--createos-rootfs <name>`    | Base image or template                           |
+| `--createos-network <name>`   | Network(s) to join at creation (comma-separated) |
+| `--createos-sync-once`        | Copy the host project to `/root/workspace` first |
+| `--createos-avoid-git-ignore` | Include files ignored by Git during that copy    |
+| `--createos-watch`            | Keep the host project and sandbox in sync        |
 
-`--sync-once` and `--watch` cannot be combined. `--sync-once` copies host files
-once and keeps sandbox-only files. `--watch` starts a two-way Mutagen sync for
-the session.
+`--createos-sync-once` and `--createos-watch` cannot be combined. The former copies
+host files once, keeps sandbox-only files, and excludes VCS metadata plus Git-ignored
+files by default. `--createos-avoid-git-ignore` includes Git-ignored files.
+`--createos-watch` starts a two-way Mutagen sync for the session.
+
+Before the first agent turn, loaded Pi skill directories are mirrored to their
+original absolute paths in the sandbox. Only the loaded skill directories and
+their bundled files are copied; Pi credentials, settings, and sessions stay local.
 
 ### In-session commands
 
@@ -65,7 +71,7 @@ The LLM agent has these tools available automatically:
 Sandboxes on the same network can reach each other by IP:
 
 ```bash
-pi --createos --network backend
+pi --createos --createos-network backend
 ```
 
 ## How it works
@@ -73,8 +79,9 @@ pi --createos --network backend
 1. On `pi --createos`, checks that `createos` CLI is installed and logged in
 2. Creates a sandbox via `createos sandbox create`
 3. All Pi tools (bash, read, write, edit, ls, find, grep) run inside the sandbox via `createos sandbox exec` / `push` / `pull`
-4. Optional `--sync-once` copies the host project to `/root/workspace`; `--watch` starts a two-way sync
-5. On exit, ephemeral sessions destroy the sandbox; persisted sessions keep it for resume
+4. Mirrors loaded Pi skill directories into the sandbox before the first agent turn
+5. Optional `--createos-sync-once` copies the host project to `/root/workspace`; `--createos-watch` starts a two-way sync
+6. On exit, ephemeral sessions destroy the sandbox; persisted sessions keep it for resume
 
 ## Architecture
 

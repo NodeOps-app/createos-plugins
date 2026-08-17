@@ -19,6 +19,7 @@ import {
 import { Type } from "typebox";
 import * as cli from "./cli.ts";
 import { type FindParams, runRemoteFind } from "./find-tool.ts";
+import { validateLocalSyncSource } from "./startup-sync.ts";
 import { type GrepParams, runRemoteGrep } from "./grep-tool.ts";
 import { createBashOps, createEditOps, createLsOps, createReadOps, createWriteOps } from "./ops.ts";
 
@@ -578,7 +579,8 @@ export function registerTools(pi: ExtensionAPI, getActive: () => ToolSandbox | n
       const active = requireSandbox();
       if (!active) return txt("No active sandbox.");
       try {
-        const result = await cli.startSync(pi, active.sandboxId, local_dir, remote_dir, {
+        const source = await validateLocalSyncSource(local_dir);
+        const result = await cli.startSync(pi, active.sandboxId, source, remote_dir, {
           mode,
           exclude,
         });

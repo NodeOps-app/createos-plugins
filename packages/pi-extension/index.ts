@@ -18,6 +18,7 @@ import {
   startProjectWatch,
   stopProjectWatch,
   syncProjectOnce,
+  syncSkillDirectories,
   type ProjectWatch,
 } from "./src/startup-sync.ts";
 import { registerTools } from "./src/tools.ts";
@@ -39,26 +40,37 @@ const hostCwd = process.cwd();
 
 export default function (pi: ExtensionAPI) {
   pi.registerFlag("createos", {
-    description: "Run tools inside a CreateOS sandbox",
+    description: "CreateOS sandbox: run tools inside it",
     type: "boolean",
   });
-  pi.registerFlag("shape", { description: "Sandbox shape (default: s-2vcpu-2gb)", type: "string" });
-  pi.registerFlag("rootfs", { description: "CreateOS rootfs or template to use", type: "string" });
-  pi.registerFlag("network", {
-    description: "Network(s) to join (comma-separated)",
+  pi.registerFlag("createos-shape", {
+    description: "CreateOS sandbox: shape (default: s-2vcpu-2gb)",
     type: "string",
   });
-  pi.registerFlag("sync-once", {
-    description: "Copy the host project to /root/workspace before starting Pi",
+  pi.registerFlag("createos-rootfs", {
+    description: "CreateOS sandbox: rootfs or template",
+    type: "string",
+  });
+  pi.registerFlag("createos-network", {
+    description: "CreateOS sandbox: network(s) to join (comma-separated)",
+    type: "string",
+  });
+  pi.registerFlag("createos-sync-once", {
+    description: "CreateOS sandbox: copy host project to /root/workspace before starting Pi",
     type: "boolean",
   });
-  pi.registerFlag("watch", {
-    description: "Keep the host project and /root/workspace synchronized",
+  pi.registerFlag("createos-watch", {
+    description: "CreateOS sandbox: keep host project and /root/workspace synchronized",
+    type: "boolean",
+  });
+  pi.registerFlag("createos-avoid-git-ignore", {
+    description: "CreateOS sandbox: copy files excluded by .gitignore during --createos-sync-once",
     type: "boolean",
   });
 
   let active: ActiveSandbox | null = null;
   let projectWatch: ProjectWatch | undefined;
+  const syncedSkillDirectories = new Set<string>();
 
   registerTools(pi, () => (active ? { sandboxId: active.sandboxId, cwd: active.cwd } : null));
 
@@ -73,7 +85,13 @@ export default function (pi: ExtensionAPI) {
     }
     if (mode === "once") {
       await runStartupLoader(ctx, "Syncing project to sandbox…", async (signal) => {
-        await syncProjectOnce(pi, sandbox.sandboxId, hostCwd, signal);
+        await syncProjectOnce(
+          pi,
+          sandbox.sandboxId,
+          hostCwd,
+          { avoidGitIgnore: pi.getFlag("createos-avoid-git-ignore") === true },
+          signal,
+        );
         return true;
       });
       setRunningStatus(ctx, sandbox.sandboxId, sandbox.cwd);
@@ -285,8 +303,8 @@ export default function (pi: ExtensionAPI) {
     let startupSync: "once" | "watch" | undefined;
     try {
       startupSync = selectStartupSync(
-        pi.getFlag("sync-once") === true,
-        pi.getFlag("watch") === true,
+        pi.getFlag("createos-sync-once") === true,
+        pi.getFlag("createos-watch") === true,
       );
     } catch (err) {
       ctx.ui.notify(errorMessage(err), "error");
@@ -344,9 +362,9 @@ export default function (pi: ExtensionAPI) {
         }
       }
 
-      const shape = stringFlag(pi.getFlag("shape")) ?? "s-2vcpu-2gb";
-      const rootfs = stringFlag(pi.getFlag("rootfs"));
-      const networkFlag = stringFlag(pi.getFlag("network"));
+      const shape = stringFlag(pi.getFlag("createos-shape")) ?? "s-2vcpu-2gb";
+      const rootfs = stringFlag(pi.getFlag("createos-rootfs"));
+      const networkFlag = stringFlag(pi.getFlag("createos-network"));
       const networks = networkFlag
         ? networkFlag
             .split(",")
@@ -387,16 +405,30 @@ export default function (pi: ExtensionAPI) {
     }
   });
 
-  pi.on("before_agent_start", (event) => {
-    if (!active) return;
-    const cwdLine = `Current working directory: ${active.cwd} (CreateOS sandbox ${shortId(active.sandboxId)})`;
+  pi.on("before_agent_start", async (event, ctx) => {
+    const sandbox = active;
+    if (!sandbox) return;
+
+    const pendingSkills = (event.systemPromptOptions.skills ?? []).filter(
+      ({ baseDir }) => !syncedSkillDirectories.has(baseDir),
+    );
+    if (pendingSkills.length > 0) {
+      try {
+        await syncSkillDirectories(pi, sandbox.sandboxId, pendingSkills);
+        pendingSkills.forEach(({ baseDir }) => syncedSkillDirectories.add(baseDir));
+      } catch (error) {
+        ctx.ui.notify(`CreateOS: could not sync skills — ${errorMessage(error)}`, "error");
+      }
+    }
+
+    const cwdLine = `Current working directory: ${sandbox.cwd} (CreateOS sandbox ${shortId(sandbox.sandboxId)})`;
     let systemPrompt = event.systemPrompt.replace(/Current working directory: .*/g, cwdLine);
     // Caveman-style: short, declarative, environment-aware.
     // The model already sees tool descriptions/guidelines — don't repeat them here.
     systemPrompt +=
       "\n\n--- CreateOS Sandbox Environment ---" +
-      `\nSandbox: ${active.sandboxId}` +
-      `\nCwd: ${active.cwd}` +
+      `\nSandbox: ${sandbox.sandboxId}` +
+      `\nCwd: ${sandbox.cwd}` +
       `\nHost dir: ${hostCwd}` +
       "\nAll tools run remotely in this sandbox. You know the sandbox ID and cwd — never run pwd/hostname." +
       "\n" +

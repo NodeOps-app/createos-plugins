@@ -49,10 +49,10 @@ pi install git:github.com/NodeOps-app/createos-claude-plugins
 pi --createos
 
 # Optional: copy this project to /root/workspace before Pi starts
-pi --createos --sync-once
+pi --createos --createos-sync-once
 
 # Optional: continuously sync this project and /root/workspace
-pi --createos --watch
+pi --createos --createos-watch
 ```
 
 The `createos` CLI **auto-installs** on first use. Sign in once with `createos login` (browser OAuth, run it in your own terminal) or `export CREATEOS_API_KEY=<key>`; check with `cos auth`. Prefer a local checkout? See [Install](#install).
@@ -103,17 +103,21 @@ All built-in tools (bash, read, write, edit, ls, find, grep) transparently route
 
 ### Flags
 
-| Flag               | Purpose                                |
-| ------------------ | -------------------------------------- |
-| `--createos`       | Activate the extension                 |
-| `--shape <shape>`  | Sandbox size (default: `s-2vcpu-2gb`)  |
-| `--rootfs <name>`  | Base image or template                 |
-| `--network <name>` | Network(s) to join at creation         |
-| `--sync-once`      | Copy project to `/root/workspace` once |
-| `--watch`          | Two-way project sync for this session  |
+| Flag                          | Purpose                                |
+| ----------------------------- | -------------------------------------- |
+| `--createos`                  | Activate the extension                 |
+| `--createos-shape <shape>`    | Sandbox shape (default: `s-2vcpu-2gb`) |
+| `--createos-rootfs <name>`    | Base image or template                 |
+| `--createos-network <name>`   | Network(s) to join at creation         |
+| `--createos-sync-once`        | Copy project to `/root/workspace` once |
+| `--createos-avoid-git-ignore` | Include Git-ignored files in that copy |
+| `--createos-watch`            | Two-way project sync for this session  |
 
-`--sync-once` and `--watch` are mutually exclusive. The first preserves
-sandbox-only files; the latter starts the existing two-way sync.
+`--createos-sync-once` and `--createos-watch` are mutually exclusive. The first preserves
+sandbox-only files and excludes VCS metadata plus Git-ignored files by default;
+`--createos-avoid-git-ignore` includes ignored files. The latter starts the existing two-way
+sync. Loaded Pi skill directories are mirrored into the sandbox before the first
+agent turn; Pi credentials, settings, and sessions stay local.
 
 Full tool inventory lives in the [**Pi Extension README**](./packages/pi-extension/README.md).
 

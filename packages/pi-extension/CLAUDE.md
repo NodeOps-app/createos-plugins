@@ -82,18 +82,22 @@ to the sandbox when `--createos` is active, local when off.
 
 ## Flags
 
-| Flag          | Type    | Purpose                                          |
-| ------------- | ------- | ------------------------------------------------ |
-| `--createos`  | boolean | Activate the extension                           |
-| `--shape`     | string  | Sandbox size (default: `s-2vcpu-2gb`)            |
-| `--rootfs`    | string  | Base image or template                           |
-| `--network`   | string  | Network(s) to join at creation (comma-separated) |
-| `--sync-once` | boolean | Copy the host project to `/root/workspace` first |
-| `--watch`     | boolean | Keep the host project and sandbox synchronized   |
+| Flag                          | Type    | Purpose                                          |
+| ----------------------------- | ------- | ------------------------------------------------ |
+| `--createos`                  | boolean | Activate the extension                           |
+| `--createos-shape`            | string  | Sandbox size (default: `s-2vcpu-2gb`)            |
+| `--createos-rootfs`           | string  | Base image or template                           |
+| `--createos-network`          | string  | Network(s) to join at creation (comma-separated) |
+| `--createos-sync-once`        | boolean | Copy the host project to `/root/workspace` first |
+| `--createos-avoid-git-ignore` | boolean | Include Git-ignored files during that copy       |
+| `--createos-watch`            | boolean | Keep the host project and sandbox synchronized   |
 
-`--sync-once` and `--watch` are mutually exclusive. The first packs and uploads
-host files without VCS metadata; the second delegates to the existing two-way
-`createos sandbox sync` command.
+`--createos-sync-once` and `--createos-watch` are mutually exclusive. The former packs
+and uploads host files without VCS metadata or Git-ignored files by default;
+`--createos-avoid-git-ignore` includes ignored files. The latter delegates to the existing two-way `createos sandbox
+sync` command. Before the first agent turn, loaded Pi skill directories are mirrored to
+their original absolute paths in the sandbox; Pi credentials, settings, and sessions
+stay local.
 
 ## Slash commands
 
@@ -106,7 +110,7 @@ host files without VCS metadata; the second delegates to the existing two-way
 ## Lifecycle
 
 1. `session_start` — preflight checks, create sandbox, then optionally sync or watch `/root/workspace`
-2. `before_agent_start` — inject sandbox context into system prompt
+2. `before_agent_start` — mirror loaded skill directories, then inject sandbox context
 3. `session_shutdown` — stop a watcher, clean up temp SSH key, destroy sandbox (ephemeral) or keep (persisted)
 
 ## CLI JSON support
@@ -126,7 +130,7 @@ were patched in `createos-cli` to support it via `output.Render()`.
 - **Temp SSH key for sync**: `sandbox_sync` uses Mutagen which needs SSH.
   The user's key may be passphrase-protected (can't prompt non-interactively).
   We generate a throwaway ed25519 key per session, cleaned up on shutdown.
-  For `--watch`, the watcher gets its own key (held on `ProjectWatch`),
+  For `--createos-watch`, the watcher gets its own key (held on `ProjectWatch`),
   cleaned on every shutdown path (`quit`/`new`/`resume`/`fork`) to avoid
   orphans.
 
