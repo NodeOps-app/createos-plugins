@@ -1,7 +1,7 @@
 {
   "name": "@createos/pi",
   "version": "0.2.0",
-  "description": "Pi coding agent extension that runs all tool calls inside a remote CreateOS Sandbox while the agent runs locally",
+  "description": "Pi coding agent extension with CreateOS Sandbox tools and optional remote tool routing",
   "keywords": [
     "createos",
     "pi-extension",
@@ -21,7 +21,7 @@
   ],
   "type": "module",
   "scripts": {
-    "test": "bun test src/startup-sync.test.ts",
+    "test": "bun test src/startup-sync.test.ts src/nextjs-variants.test.ts",
     "typecheck": "tsc --noEmit"
   },
   "devDependencies": {

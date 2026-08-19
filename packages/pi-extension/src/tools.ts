@@ -19,6 +19,7 @@ import {
 import { Type } from "typebox";
 import * as cli from "./cli.ts";
 import { type FindParams, runRemoteFind } from "./find-tool.ts";
+import { deployNextjsVariants } from "./nextjs-variants.ts";
 import { validateLocalSyncSource } from "./startup-sync.ts";
 import { type GrepParams, runRemoteGrep } from "./grep-tool.ts";
 import { createBashOps, createEditOps, createLsOps, createReadOps, createWriteOps } from "./ops.ts";
@@ -41,7 +42,7 @@ export function registerTools(pi: ExtensionAPI, getActive: () => ToolSandbox | n
   function requireSandbox(): ToolSandbox | null {
     const active = getActive();
     if (active) return active;
-    if (pi.getFlag("createos") === true) {
+    if (pi.getFlag("inside-createos-sandbox") === true) {
       throw new Error(
         "CreateOS sandbox is unavailable — the tool was NOT run on your host. Restart Pi.",
       );
@@ -113,16 +114,75 @@ export function registerTools(pi: ExtensionAPI, getActive: () => ToolSandbox | n
     },
   });
 
+  // --- Next.js variant deployment ---
+
+  pi.registerTool({
+    name: "sandbox_deploy_nextjs_variants",
+    label: "Deploy Next.js Variants",
+    description:
+      "Deploy public variants of the current Next.js project. Each sandbox receives the local project source, " +
+      "a unique build-time suffix, a production build, and a verified public HTTPS URL.",
+    promptSnippet: "Deploy multiple public Next.js project variants",
+    promptGuidelines: [
+      "Use sandbox_deploy_nextjs_variants for requests to host or deploy multiple independent Next.js copies.",
+      "It copies the project source while honoring .gitignore; never recreate or simplify the application in shell commands.",
+      "The tool returns only URLs whose page contains its generated suffix. Failed variants remain available for diagnosis.",
+    ],
+    parameters: Type.Object({
+      count: Type.Optional(
+        Type.Integer({ minimum: 1, maximum: 25, description: "Number of public variants (default: 1)" }),
+      ),
+      source_dir: Type.Optional(
+        Type.String({ description: "Absolute local project directory (default: current directory)" }),
+      ),
+      name_prefix: Type.Optional(
+        Type.String({ description: "Sandbox name prefix (default: nextjs-variant)" }),
+      ),
+      suffix_env: Type.Optional(
+        Type.String({ description: "Build-time environment variable rendered by the app (default: HELLO_SUFFIX)" }),
+      ),
+      port: Type.Optional(
+        Type.Integer({ minimum: 1, maximum: 65535, description: "Next.js port (default: 3000)" }),
+      ),
+      shape: Type.Optional(Type.String({ description: "Sandbox size (default: s-2vcpu-2gb)" })),
+      rootfs: Type.Optional(Type.String({ description: "Base image or template" })),
+    }),
+    async execute(_id, params, signal) {
+      const suffixEnv = params.suffix_env ?? "HELLO_SUFFIX";
+      if (!/^[A-Z_][A-Z0-9_]*$/.test(suffixEnv)) {
+        throw new Error("suffix_env must be a shell environment variable name");
+      }
+
+      const variants = await deployNextjsVariants(
+        pi,
+        {
+          sourceDir: params.source_dir ?? localCwd,
+          count: params.count ?? 1,
+          namePrefix: params.name_prefix ?? "nextjs-variant",
+          suffixEnv,
+          port: params.port ?? 3000,
+          shape: params.shape,
+          rootfs: params.rootfs,
+        },
+        signal,
+      );
+      const lines = variants.map((variant) => {
+        if (variant.verified && variant.url) return `✓ ${variant.name} · ${variant.suffix} · ${variant.url}`;
+        return `✗ ${variant.name} · ${variant.suffix} · ${variant.error ?? "health check failed"}`;
+      });
+      return { content: [{ type: "text", text: lines.join("\n") }], details: { variants } };
+    },
+  });
+
   // --- Sandbox create ---
 
   pi.registerTool({
     name: "sandbox_create",
     label: "Create Sandbox",
-    description:
-      "Create an additional sandbox, optionally joined to networks so it can reach other sandboxes.",
+    description: "Create a sandbox, optionally joined to networks so it can reach other sandboxes.",
     promptSnippet: "Create a new sandbox",
     promptGuidelines: [
-      "Use sandbox_create for extra sandboxes (multi-node clusters, separate database or service hosts); pass networks, or sandbox_network_attach later, to connect them.",
+      "Use sandbox_create with networks to make a connected multi-node cluster; use sandbox_network_attach to connect an existing sandbox later.",
     ],
     parameters: Type.Object({
       shape: Type.Optional(
@@ -162,7 +222,7 @@ export function registerTools(pi: ExtensionAPI, getActive: () => ToolSandbox | n
     description: "Run a command on a specific sandbox by ID.",
     promptSnippet: "Run a command on a specific sandbox",
     promptGuidelines: [
-      "The bash tool runs on the current sandbox; use sandbox_exec for any other sandbox.",
+      "Use sandbox_exec for a named sandbox. In --inside-createos-sandbox mode, bash runs on the current sandbox; use sandbox_exec for any other sandbox.",
     ],
     parameters: Type.Object({
       sandbox_id: Type.String({ description: "ID of the target sandbox" }),
@@ -487,13 +547,14 @@ export function registerTools(pi: ExtensionAPI, getActive: () => ToolSandbox | n
         maximum: 65535,
         description: "The port the server listens on",
       }),
+      sandbox_id: Type.Optional(Type.String({ description: "Sandbox ID (defaults to current)" })),
     }),
-    async execute(_id, { port }, signal) {
+    async execute(_id, { port, sandbox_id }, signal) {
       if (signal?.aborted) throw new Error("aborted");
-      const active = requireSandbox();
-      if (!active) return txt("No active sandbox.");
+      const targetId = sandbox_id ?? requireSandbox()?.sandboxId;
+      if (!targetId) return txt("No sandbox selected.");
       try {
-        const info = await cli.getSandbox(pi, active.sandboxId);
+        const info = await cli.getSandbox(pi, targetId);
         if (info.ingress_url_template) {
           return txt(
             `Preview URL for port ${port}: ${info.ingress_url_template.replace("<port>", String(port))}`,
@@ -529,13 +590,14 @@ export function registerTools(pi: ExtensionAPI, getActive: () => ToolSandbox | n
           description: "Local port (defaults to remote_port)",
         }),
       ),
+      sandbox_id: Type.Optional(Type.String({ description: "Sandbox ID (defaults to current)" })),
     }),
-    async execute(_id, { remote_port, local_port }, signal) {
+    async execute(_id, { remote_port, local_port, sandbox_id }, signal) {
       if (signal?.aborted) throw new Error("aborted");
-      const active = requireSandbox();
-      if (!active) return txt("No active sandbox.");
+      const targetId = sandbox_id ?? requireSandbox()?.sandboxId;
+      if (!targetId) return txt("No sandbox selected.");
       try {
-        const result = await cli.startTunnel(pi, active.sandboxId, remote_port, local_port);
+        const result = await cli.startTunnel(pi, targetId, remote_port, local_port);
         return txt(
           `Port forward started: localhost:${result.localPort} → sandbox:${remote_port}\nAccess at: http://localhost:${result.localPort}`,
         );
@@ -573,14 +635,15 @@ export function registerTools(pi: ExtensionAPI, getActive: () => ToolSandbox | n
           description: 'Glob patterns to exclude (e.g. ["node_modules", "*.log"])',
         }),
       ),
+      sandbox_id: Type.Optional(Type.String({ description: "Sandbox ID (defaults to current)" })),
     }),
-    async execute(_id, { local_dir, remote_dir, mode, exclude }, signal) {
+    async execute(_id, { local_dir, remote_dir, mode, exclude, sandbox_id }, signal) {
       if (signal?.aborted) throw new Error("aborted");
-      const active = requireSandbox();
-      if (!active) return txt("No active sandbox.");
+      const targetId = sandbox_id ?? requireSandbox()?.sandboxId;
+      if (!targetId) return txt("No sandbox selected.");
       try {
         const source = await validateLocalSyncSource(local_dir);
-        const result = await cli.startSync(pi, active.sandboxId, source, remote_dir, {
+        const result = await cli.startSync(pi, targetId, source, remote_dir, {
           mode,
           exclude,
         });
@@ -1012,7 +1075,7 @@ export function registerTools(pi: ExtensionAPI, getActive: () => ToolSandbox | n
   pi.on("user_bash", () => {
     const active = getActive();
     if (active) return { operations: createBashOps(pi, active.sandboxId, active.cwd) };
-    if (pi.getFlag("createos") === true) {
+    if (pi.getFlag("inside-createos-sandbox") === true) {
       return {
         result: {
           output:

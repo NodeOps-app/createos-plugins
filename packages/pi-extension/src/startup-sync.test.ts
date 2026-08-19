@@ -7,6 +7,7 @@ import { describe, test } from "node:test";
 
 import { getAgentDir } from "@earendil-works/pi-coding-agent";
 
+import createosExtension from "../index.ts";
 import { sandboxExec as executeInSandbox } from "./cli.ts";
 import {
   createArchiveArgs,
@@ -16,6 +17,108 @@ import {
   syncSkillDirectories,
   validateLocalSyncSource,
 } from "./startup-sync.ts";
+
+function createExtensionHarness(flagValues: Record<string, boolean> = {}) {
+  const registeredFlags: string[] = [];
+  const registeredTools: Array<{ name?: string }> = [];
+  const registeredCommands = new Map<
+    string,
+    { handler: (args: string, ctx: never) => Promise<void> }
+  >();
+  const execCalls: Array<{ command: string; args: string[] }> = [];
+  let sessionStart: ((event: never, ctx: never) => Promise<void>) | undefined;
+  let userBash: (() => unknown) | undefined;
+  const pi = {
+    registerFlag: (name: string) => registeredFlags.push(name),
+    registerTool: (tool: { name?: string }) => registeredTools.push(tool),
+    registerCommand: (
+      name: string,
+      command: { handler: (args: string, ctx: never) => Promise<void> },
+    ) => registeredCommands.set(name, command),
+    on: (event: string, handler: (...args: never[]) => unknown) => {
+      if (event === "session_start")
+        sessionStart = handler as unknown as (event: never, ctx: never) => Promise<void>;
+      if (event === "user_bash") userBash = handler as unknown as () => unknown;
+    },
+    getFlag: (name: string) => flagValues[name],
+    exec: async (command: string, args: string[]) => {
+      execCalls.push({ command, args });
+      if (args.join(" ") === "-o json sandbox network ls")
+        return { code: 0, stdout: "[]", stderr: "" };
+      return { code: args[0] === "version" ? 0 : 1, stdout: "", stderr: "" };
+    },
+  };
+
+  createosExtension(pi as never);
+
+  return {
+    execCalls,
+    registeredFlags,
+    registeredTools,
+    runUserBash(): unknown {
+      assert(userBash);
+      return userBash();
+    },
+    async runCommand(name: string, args: string, ctx: never): Promise<void> {
+      const command = registeredCommands.get(name);
+      assert(command);
+      await command.handler(args, ctx);
+    },
+    async start(): Promise<void> {
+      assert(sessionStart);
+      await sessionStart(
+        { reason: "startup" } as never,
+        { mode: "print", ui: { notify() {} } } as never,
+      );
+    },
+  };
+}
+
+test("uses --inside-createos-sandbox as the only remote-mode flag", async () => {
+  const local = createExtensionHarness();
+  assert(local.registeredFlags.includes("inside-createos-sandbox"));
+  assert(!local.registeredFlags.includes("createos"));
+  assert(local.registeredTools.some((tool) => tool.name === "sandbox_create"));
+  assert.equal(local.runUserBash(), undefined);
+  await local.start();
+  assert.deepEqual(local.execCalls, []);
+
+  const legacy = createExtensionHarness({ createos: true });
+  assert.equal(legacy.runUserBash(), undefined);
+  await legacy.start();
+  assert.deepEqual(legacy.execCalls, []);
+
+  const remote = createExtensionHarness({ "inside-createos-sandbox": true });
+  assert.deepEqual(remote.runUserBash(), {
+    result: {
+      output: "CreateOS sandbox is unavailable — the command was NOT run on your host. Restart Pi.",
+      exitCode: 1,
+      cancelled: false,
+      truncated: false,
+    },
+  });
+  await remote.start();
+  assert.deepEqual(remote.execCalls, [
+    { command: "createos", args: ["version"] },
+    { command: "createos", args: ["-o", "json", "sandbox", "shapes"] },
+  ]);
+});
+
+test("allows global network commands without an active sandbox", async () => {
+  const extension = createExtensionHarness();
+  const notifications: string[] = [];
+  const ctx = { ui: { notify: (message: string) => notifications.push(message) } } as never;
+
+  await extension.runCommand("network", "ls", ctx);
+  assert.deepEqual(extension.execCalls, [
+    { command: "createos", args: ["-o", "json", "sandbox", "network", "ls"] },
+  ]);
+  assert.deepEqual(notifications, ["No networks. Create with /network create <name>"]);
+
+  await extension.runCommand("network", "attach network-1", ctx);
+  assert.equal(notifications.at(-1), "No sandbox active. Launch with --inside-createos-sandbox.");
+  assert.equal(extension.execCalls.length, 1);
+});
 
 describe("selectStartupSync", () => {
   test("selects one-time sync", () => {

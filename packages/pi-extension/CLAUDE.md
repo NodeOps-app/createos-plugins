@@ -1,7 +1,7 @@
 # pi-createos-plugin
 
 Pi coding agent extension for [CreateOS Sandbox](https://nodeops.network/createos).
-Runs all tool calls inside a remote sandbox while the agent runs locally.
+Pi and its built-in tools run locally by default; `--inside-createos-sandbox` routes built-ins to a remote sandbox.
 
 ## Architecture
 
@@ -48,8 +48,8 @@ Pi agent (local)  →  createos CLI  →  CreateOS API  →  Sandbox
 
 ### Built-in replacements (7)
 
-`bash`, `read`, `write`, `edit`, `ls`, `find`, `grep` — transparently routed
-to the sandbox when `--createos` is active, local when off.
+`bash`, `read`, `write`, `edit`, `ls`, `find`, `grep` — run locally by default and route
+to the sandbox only when `--inside-createos-sandbox` is active.
 
 ### Sandbox lifecycle (7)
 
@@ -84,7 +84,7 @@ to the sandbox when `--createos` is active, local when off.
 
 | Flag                          | Type    | Purpose                                          |
 | ----------------------------- | ------- | ------------------------------------------------ |
-| `--createos`                  | boolean | Activate the extension                           |
+| `--inside-createos-sandbox`   | boolean | Run Pi inside a sandbox                          |
 | `--createos-shape`            | string  | Sandbox size (default: `s-2vcpu-2gb`)            |
 | `--createos-rootfs`           | string  | Base image or template                           |
 | `--createos-network`          | string  | Network(s) to join at creation (comma-separated) |
@@ -92,12 +92,12 @@ to the sandbox when `--createos` is active, local when off.
 | `--createos-avoid-git-ignore` | boolean | Include Git-ignored files during that copy       |
 | `--createos-watch`            | boolean | Keep the host project and sandbox synchronized   |
 
-`--createos-sync-once` and `--createos-watch` are mutually exclusive. The former packs
-and uploads host files without VCS metadata or Git-ignored files by default;
-`--createos-avoid-git-ignore` includes ignored files. The latter delegates to the existing two-way `createos sandbox
-sync` command. Before the first agent turn, loaded Pi skill directories are mirrored to
-their original absolute paths in the sandbox; Pi credentials, settings, and sessions
-stay local.
+Use `--createos-*` flags with `--inside-createos-sandbox`. `--createos-sync-once` and
+`--createos-watch` are mutually exclusive. The former packs and uploads host files without
+VCS metadata or Git-ignored files by default; `--createos-avoid-git-ignore` includes ignored
+files. The latter delegates to the existing two-way `createos sandbox sync` command. Before
+the first sandbox-mode agent turn, loaded Pi skill directories are mirrored to their original
+absolute paths in the sandbox; Pi credentials, settings, and sessions stay local.
 
 ## Slash commands
 
@@ -109,8 +109,8 @@ stay local.
 
 ## Lifecycle
 
-1. `session_start` — preflight checks, create sandbox, then optionally sync or watch `/root/workspace`
-2. `before_agent_start` — mirror loaded skill directories, then inject sandbox context
+1. `session_start` — with `--inside-createos-sandbox`, preflight checks, create sandbox, then optionally sync or watch `/root/workspace`
+2. `before_agent_start` — in sandbox mode, mirror loaded skill directories, then inject sandbox context
 3. `session_shutdown` — stop a watcher, clean up temp SSH key, destroy sandbox (ephemeral) or keep (persisted)
 
 ## CLI JSON support

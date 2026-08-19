@@ -39,8 +39,8 @@ interface ActiveSandbox {
 const hostCwd = process.cwd();
 
 export default function (pi: ExtensionAPI) {
-  pi.registerFlag("createos", {
-    description: "CreateOS sandbox: run tools inside it",
+  pi.registerFlag("inside-createos-sandbox", {
+    description: "CreateOS sandbox: run Pi inside it",
     type: "boolean",
   });
   pi.registerFlag("createos-shape", {
@@ -111,7 +111,10 @@ export default function (pi: ExtensionAPI) {
     description: "Show the active CreateOS sandbox's status",
     handler: async (_args, ctx) => {
       if (!active) {
-        ctx.ui.notify("No CreateOS sandbox is active. Launch Pi with --createos.", "warning");
+        ctx.ui.notify(
+          "No CreateOS sandbox is active. Launch Pi with --inside-createos-sandbox.",
+          "warning",
+        );
         return;
       }
       try {
@@ -138,10 +141,6 @@ export default function (pi: ExtensionAPI) {
       ];
     },
     handler: async (args, ctx) => {
-      if (!active) {
-        ctx.ui.notify("No sandbox active. Launch with --createos.", "warning");
-        return;
-      }
       const parts = (args ?? "").trim().split(/\s+/);
       const sub = parts[0],
         arg = parts.slice(1).join(" ").trim();
@@ -201,12 +200,20 @@ export default function (pi: ExtensionAPI) {
               ctx.ui.notify("Usage: /network attach <name|id>", "warning");
               return;
             }
+            if (!active) {
+              ctx.ui.notify("No sandbox active. Launch with --inside-createos-sandbox.", "warning");
+              return;
+            }
             await cli.attachNetwork(pi, active.sandboxId, arg);
             ctx.ui.notify(`Attached sandbox to network "${arg}"`, "info");
             break;
           case "detach":
             if (!arg) {
               ctx.ui.notify("Usage: /network detach <name|id>", "warning");
+              return;
+            }
+            if (!active) {
+              ctx.ui.notify("No sandbox active. Launch with --inside-createos-sandbox.", "warning");
               return;
             }
             await cli.detachNetwork(pi, active.sandboxId, arg);
@@ -297,7 +304,7 @@ export default function (pi: ExtensionAPI) {
   // --- Lifecycle ---
 
   pi.on("session_start", async (event, ctx) => {
-    if (pi.getFlag("createos") !== true) return;
+    if (pi.getFlag("inside-createos-sandbox") !== true) return;
     if (active) return;
 
     let startupSync: "once" | "watch" | undefined;

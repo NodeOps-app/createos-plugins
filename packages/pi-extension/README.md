@@ -1,6 +1,6 @@
 # @createos/pi
 
-Pi coding agent extension that runs all tool calls inside a remote [CreateOS Sandbox](https://nodeops.network/createos) while the agent runs locally.
+Pi coding agent extension with [CreateOS Sandbox](https://nodeops.network/createos) tools. Pi runs locally by default; `--inside-createos-sandbox` routes its built-in tools to a remote sandbox.
 
 ## Setup
 
@@ -16,15 +16,22 @@ The repository root forwards Pi's package entry point to this extension. No API 
 ## Usage
 
 ```bash
-pi --createos
+# Pi and built-in tools stay local; sandbox_* tools remain available.
+pi
+
+# Create a sandbox and route Pi's built-in tools into it.
+pi --inside-createos-sandbox
 ```
 
-Everything works inside the session — sandbox, networks, device access, port forwarding.
+Sandbox lifecycle, networking, device access, and port-forwarding tools are available in both modes.
 
-### Optional flags
+### Sandbox-mode flags
+
+Use these with `--inside-createos-sandbox`:
 
 | Flag                          | Purpose                                          |
 | ----------------------------- | ------------------------------------------------ |
+| `--inside-createos-sandbox`   | Run Pi inside a sandbox                          |
 | `--createos-shape <shape>`    | Sandbox shape (default: `s-2vcpu-2gb`)           |
 | `--createos-rootfs <name>`    | Base image or template                           |
 | `--createos-network <name>`   | Network(s) to join at creation (comma-separated) |
@@ -37,9 +44,9 @@ host files once, keeps sandbox-only files, and excludes VCS metadata plus Git-ig
 files by default. `--createos-avoid-git-ignore` includes Git-ignored files.
 `--createos-watch` starts a two-way Mutagen sync for the session.
 
-Before the first agent turn, loaded Pi skill directories are mirrored to their
-original absolute paths in the sandbox. Only the loaded skill directories and
-their bundled files are copied; Pi credentials, settings, and sessions stay local.
+In sandbox mode, before the first agent turn, loaded Pi skill directories are mirrored to
+their original absolute paths in the sandbox. Only the loaded skill directories and their
+bundled files are copied; Pi credentials, settings, and sessions stay local.
 
 ### In-session commands
 
@@ -58,30 +65,33 @@ their bundled files are copied; Pi credentials, settings, and sessions stay loca
 
 ### Agent tools
 
-The LLM agent has these tools available automatically:
+The LLM agent always has `sandbox_*` tools to create and manage sandboxes, networks,
+disks, port forwarding, and device VPN. Pi's built-in tools stay local unless sandbox mode is enabled.
 
-- **`sandbox_manage`** — full lifecycle: pause, resume, fork, destroy, ingress, firewall, bandwidth, shapes, images
-- **`tunnel`** — port-forward a sandbox port to `localhost` on the user's machine
-- **`preview_url`** — get a public HTTPS URL for any port in the sandbox
-- **`network`** — create/manage private networks for sandbox-to-sandbox communication
-- **`device`** — check device status, attach to networks for direct IP access
+### Deploy Next.js variants
+
+For multiple public copies of the current Next.js project, ask Pi once:
+
+> Deploy 10 public variants of this current Next.js project. Preserve its tracked source and UI exactly. Render a unique random `HELLO_SUFFIX` in each build, then return only verified public URLs.
+
+Pi uses `sandbox_deploy_nextjs_variants`: it archives the local project while honoring Git ignore rules, creates sandboxes in bounded parallelism, builds each copy with a distinct suffix, starts each app in `tmux`, and verifies the public HTTPS response. The project must render `HELLO_SUFFIX` during `next build`.
 
 ### Private networks
 
 Sandboxes on the same network can reach each other by IP:
 
 ```bash
-pi --createos --createos-network backend
+pi --inside-createos-sandbox --createos-network backend
 ```
 
 ## How it works
 
-1. On `pi --createos`, checks that `createos` CLI is installed and logged in
-2. Creates a sandbox via `createos sandbox create`
-3. All Pi tools (bash, read, write, edit, ls, find, grep) run inside the sandbox via `createos sandbox exec` / `push` / `pull`
-4. Mirrors loaded Pi skill directories into the sandbox before the first agent turn
-5. Optional `--createos-sync-once` copies the host project to `/root/workspace`; `--createos-watch` starts a two-way sync
-6. On exit, ephemeral sessions destroy the sandbox; persisted sessions keep it for resume
+1. By default, Pi and its built-in tools run locally while sandbox tools stay available.
+2. `pi --inside-createos-sandbox` checks that `createos` is installed and logged in, then creates a sandbox.
+3. In sandbox mode, Pi tools (bash, read, write, edit, ls, find, grep) run through `createos sandbox exec` / `push` / `pull`.
+4. Sandbox mode mirrors loaded Pi skill directories before the first agent turn.
+5. In sandbox mode, `--createos-sync-once` copies the host project to `/root/workspace`; `--createos-watch` starts a two-way sync.
+6. On exit, ephemeral sandbox-mode sessions destroy their sandbox; persisted sessions keep it for resume.
 
 ## Architecture
 
@@ -90,7 +100,7 @@ Your machine                          CreateOS
 ┌──────────────────┐                  ┌─────────────────────┐
 │  Pi agent (LLM)  │                  │  Sandbox             │
 │                  │ ── createos ──▶  │  code execution      │
-│  tool calls      │    CLI           │  file I/O            │
+│   remote calls   │    CLI           │  file I/O            │
 └──────────────────┘                  └─────────────────────┘
                                                │
                                                │ private network

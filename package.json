@@ -2,7 +2,7 @@
   "name": "@createos/pi",
   "version": "0.2.0",
   "private": true,
-  "description": "Pi coding agent extension that runs all tool calls inside a remote CreateOS Sandbox while the agent runs locally",
+  "description": "Pi coding agent extension with CreateOS Sandbox tools and optional remote tool routing",
   "keywords": [
     "createos",
     "pi-extension",
