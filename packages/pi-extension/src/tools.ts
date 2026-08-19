@@ -6,6 +6,8 @@
  * Pi extension best practices (snake_case, named promptGuidelines).
  */
 
+import { isAbsolute } from "node:path";
+
 import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
 import {
   createBashTool,
@@ -19,7 +21,7 @@ import {
 import { Type } from "typebox";
 import * as cli from "./cli.ts";
 import { type FindParams, runRemoteFind } from "./find-tool.ts";
-import { deployNextjsVariants } from "./nextjs-variants.ts";
+import { fanoutScenarios, type FanoutScenario } from "./fanout.ts";
 import { validateLocalSyncSource } from "./startup-sync.ts";
 import { type GrepParams, runRemoteGrep } from "./grep-tool.ts";
 import { createBashOps, createEditOps, createLsOps, createReadOps, createWriteOps } from "./ops.ts";
@@ -114,63 +116,80 @@ export function registerTools(pi: ExtensionAPI, getActive: () => ToolSandbox | n
     },
   });
 
-  // --- Next.js variant deployment ---
+  // --- Scenario fan-out ---
 
   pi.registerTool({
-    name: "sandbox_deploy_nextjs_variants",
-    label: "Deploy Next.js Variants",
+    name: "sandbox_fanout",
+    label: "Fan Out Scenarios",
     description:
-      "Deploy public variants of the current Next.js project. Each sandbox receives the local project source, " +
-      "a unique build-time suffix, a production build, and a verified public HTTPS URL.",
-    promptSnippet: "Deploy multiple public Next.js project variants",
+      "Run named test or deployment scenarios in independent sandboxes. Each receives the local project source " +
+      "without reimplementing it; public-service scenarios return verified HTTPS URLs.",
+    promptSnippet: "Run multiple isolated project scenarios in parallel",
     promptGuidelines: [
-      "Use sandbox_deploy_nextjs_variants for requests to host or deploy multiple independent Next.js copies.",
-      "It copies the project source while honoring .gitignore; never recreate or simplify the application in shell commands.",
-      "The tool returns only URLs whose page contains its generated suffix. Failed variants remain available for diagnosis.",
+      "Use sandbox_fanout for scenario-based testing, multiple configurations, or independent deployment variants.",
+      "Each scenario copies the project source while honoring .gitignore; never recreate or simplify the application in shell commands.",
+      "Use a scenario without port for a foreground test command. Set port for a server command; the tool starts it in tmux and returns only health-checked URLs.",
     ],
     parameters: Type.Object({
-      count: Type.Optional(
-        Type.Integer({ minimum: 1, maximum: 25, description: "Number of public variants (default: 1)" }),
+      scenarios: Type.Array(
+        Type.Object({
+          name: Type.String({ description: "Unique scenario name, used in the sandbox name" }),
+          command: Type.String({ description: "Command to run from the copied project directory" }),
+          environment: Type.Optional(
+            Type.Array(
+              Type.Object({
+                name: Type.String({ description: "Environment variable name" }),
+                value: Type.String({ description: "Environment variable value" }),
+              }),
+            ),
+          ),
+          port: Type.Optional(Type.Integer({ minimum: 1, maximum: 65535, description: "Server port; omit for a foreground test" })),
+          health_check_path: Type.Optional(Type.String({ description: "HTTP path to check (default: /)" })),
+          health_check_contains: Type.Optional(Type.String({ description: "Expected text in a successful health response" })),
+        }),
+        { minItems: 1, maxItems: 25, description: "Independent scenarios to run" },
       ),
-      source_dir: Type.Optional(
-        Type.String({ description: "Absolute local project directory (default: current directory)" }),
-      ),
-      name_prefix: Type.Optional(
-        Type.String({ description: "Sandbox name prefix (default: nextjs-variant)" }),
-      ),
-      suffix_env: Type.Optional(
-        Type.String({ description: "Build-time environment variable rendered by the app (default: HELLO_SUFFIX)" }),
-      ),
-      port: Type.Optional(
-        Type.Integer({ minimum: 1, maximum: 65535, description: "Next.js port (default: 3000)" }),
-      ),
+      source_dir: Type.Optional(Type.String({ description: "Absolute local project directory (default: current directory)" })),
+      name_prefix: Type.Optional(Type.String({ description: "Sandbox name prefix (default: scenario)" })),
       shape: Type.Optional(Type.String({ description: "Sandbox size (default: s-2vcpu-2gb)" })),
       rootfs: Type.Optional(Type.String({ description: "Base image or template" })),
     }),
     async execute(_id, params, signal) {
-      const suffixEnv = params.suffix_env ?? "HELLO_SUFFIX";
-      if (!/^[A-Z_][A-Z0-9_]*$/.test(suffixEnv)) {
-        throw new Error("suffix_env must be a shell environment variable name");
+      const sourceDir = params.source_dir ?? localCwd;
+      if (!isAbsolute(sourceDir)) throw new Error("source_dir must be an absolute path");
+      const scenarios: FanoutScenario[] = params.scenarios.map((scenario) => ({
+        name: scenario.name,
+        command: scenario.command,
+        environment: scenario.environment ?? [],
+        port: scenario.port,
+        healthCheckPath: scenario.health_check_path,
+        healthCheckContains: scenario.health_check_contains,
+      }));
+      for (const scenario of scenarios) {
+        for (const variable of scenario.environment) {
+          if (!/^[A-Z_][A-Z0-9_]*$/.test(variable.name)) {
+            throw new Error(`Invalid environment variable name: ${variable.name}`);
+          }
+        }
       }
 
-      const variants = await deployNextjsVariants(
+      const results = await fanoutScenarios(
         pi,
         {
-          sourceDir: params.source_dir ?? localCwd,
-          count: params.count ?? 1,
-          namePrefix: params.name_prefix ?? "nextjs-variant",
-          suffixEnv,
-          port: params.port ?? 3000,
+          sourceDir,
+          namePrefix: params.name_prefix ?? "scenario",
+          scenarios,
           shape: params.shape,
           rootfs: params.rootfs,
         },
         signal,
       );
-      const lines = variants.map((variant) => {
-        if (variant.verified && variant.url) return `✓ ${variant.name} · ${variant.suffix} · ${variant.url}`;
-        return `✗ ${variant.name} · ${variant.suffix} · ${variant.error ?? "health check failed"}`;
+      const lines = results.map((result) => {
+        if (result.verified && result.url) return `✓ ${result.name} · ${result.url}`;
+        if (result.verified) return `✓ ${result.name} · ${result.output ?? "passed"}`;
+        return `✗ ${result.name} · ${result.error ?? "failed"}`;
       });
-      return { content: [{ type: "text", text: lines.join("\n") }], details: { variants } };
+      return { content: [{ type: "text", text: lines.join("\n") }], details: { results } };
     },
   });
 

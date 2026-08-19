@@ -68,13 +68,13 @@ bundled files are copied; Pi credentials, settings, and sessions stay local.
 The LLM agent always has `sandbox_*` tools to create and manage sandboxes, networks,
 disks, port forwarding, and device VPN. Pi's built-in tools stay local unless sandbox mode is enabled.
 
-### Deploy Next.js variants
+### Fan out scenarios
 
-For multiple public copies of the current Next.js project, ask Pi once:
+For isolated configurations, tests, or deployment checks, ask Pi once:
 
-> Deploy 10 public variants of this current Next.js project. Preserve its tracked source and UI exactly. Render a unique random `HELLO_SUFFIX` in each build, then return only verified public URLs.
+> Run these scenarios against independent copies of the current project: unit tests, staging configuration, and production configuration. Preserve the tracked source. Return test results and only health-checked public URLs.
 
-Pi uses `sandbox_deploy_nextjs_variants`: it archives the local project while honoring Git ignore rules, creates sandboxes in bounded parallelism, builds each copy with a distinct suffix, starts each app in `tmux`, and verifies the public HTTPS response. The project must render `HELLO_SUFFIX` during `next build`.
+Pi uses `sandbox_fanout`: it archives the local project while honoring Git ignore rules, creates sandboxes in bounded parallelism, and runs each named scenario. A scenario without a port runs a foreground command such as a test suite. A scenario with a port runs its server in `tmux`, then receives a public HTTPS health check. Use scenario environment variables for configuration differences.
 
 ### Private networks
 
