@@ -169,10 +169,8 @@ export async function startTunnel(
   const check = await run(pi, ["sandbox", "get", sandboxId]);
   if (check.code !== 0) throw new CLIError("tunnel preflight", check);
 
-  // Spawn the tunnel as a detached background process on the host.
-  const shellCmd = `nohup createos ${args.join(" ")} > /dev/null 2>&1 & echo $!`;
-  const res = await pi.exec("sh", ["-c", shellCmd]);
-  const pid = res.stdout?.trim() ?? "";
+  // Spawn the tunnel directly so a sandbox ID is never interpreted by a host shell.
+  const pid = await startDetached(pi, args);
   return { localPort: local, pid };
 }
 
