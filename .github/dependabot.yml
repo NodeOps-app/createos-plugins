@@ -1,0 +1,16 @@
+---
+version: 2
+updates:
+  - package-ecosystem: npm
+    directory: /
+    schedule:
+      interval: daily
+    cooldown:
+      default-days: 7
+
+  - package-ecosystem: npm
+    directory: /packages/pi-extension
+    schedule:
+      interval: daily
+    cooldown:
+      default-days: 7

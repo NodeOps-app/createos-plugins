@@ -5,10 +5,23 @@
  * no API key env vars — just `createos login` and go.
  */
 
-import type { ExtensionAPI, ExtensionContext } from "@earendil-works/pi-coding-agent";
+import {
+  BorderedLoader,
+  type ExtensionAPI,
+  type ExtensionContext,
+} from "@earendil-works/pi-coding-agent";
+
 import * as cli from "./src/cli.ts";
-import { registerTools } from "./src/tools.ts";
 import { sandboxExec, cleanupTempKey, autoInstallCLI } from "./src/cli.ts";
+import {
+  selectStartupSync,
+  startProjectWatch,
+  stopProjectWatch,
+  syncProjectOnce,
+  syncSkillDirectories,
+  type ProjectWatch,
+} from "./src/startup-sync.ts";
+import { registerTools } from "./src/tools.ts";
 import { shortId } from "./src/util.ts";
 
 const SESSION_ENTRY = "createos-session";
@@ -26,20 +39,71 @@ interface ActiveSandbox {
 const hostCwd = process.cwd();
 
 export default function (pi: ExtensionAPI) {
-  pi.registerFlag("createos", {
-    description: "Run tools inside a CreateOS sandbox",
+  pi.registerFlag("inside-createos-sandbox", {
+    description: "CreateOS sandbox: run Pi inside it",
     type: "boolean",
   });
-  pi.registerFlag("shape", { description: "Sandbox shape (default: s-2vcpu-2gb)", type: "string" });
-  pi.registerFlag("rootfs", { description: "CreateOS rootfs or template to use", type: "string" });
-  pi.registerFlag("network", {
-    description: "Network(s) to join (comma-separated)",
+  pi.registerFlag("createos-shape", {
+    description: "CreateOS sandbox: shape (default: s-2vcpu-2gb)",
     type: "string",
+  });
+  pi.registerFlag("createos-rootfs", {
+    description: "CreateOS sandbox: rootfs or template",
+    type: "string",
+  });
+  pi.registerFlag("createos-network", {
+    description: "CreateOS sandbox: network(s) to join (comma-separated)",
+    type: "string",
+  });
+  pi.registerFlag("createos-sync-once", {
+    description: "CreateOS sandbox: copy host project to /root/workspace before starting Pi",
+    type: "boolean",
+  });
+  pi.registerFlag("createos-watch", {
+    description: "CreateOS sandbox: keep host project and /root/workspace synchronized",
+    type: "boolean",
+  });
+  pi.registerFlag("createos-avoid-git-ignore", {
+    description: "CreateOS sandbox: copy files excluded by .gitignore during --createos-sync-once",
+    type: "boolean",
   });
 
   let active: ActiveSandbox | null = null;
+  let projectWatch: ProjectWatch | undefined;
+  const syncedSkillDirectories = new Set<string>();
 
   registerTools(pi, () => (active ? { sandboxId: active.sandboxId, cwd: active.cwd } : null));
+
+  async function setupStartupSync(
+    ctx: ExtensionContext,
+    mode: "once" | "watch" | undefined,
+    sandbox: ActiveSandbox,
+  ): Promise<void> {
+    if (!mode) {
+      setRunningStatus(ctx, sandbox.sandboxId, sandbox.cwd);
+      return;
+    }
+    if (mode === "once") {
+      await runStartupLoader(ctx, "Syncing project to sandbox…", async (signal) => {
+        await syncProjectOnce(
+          pi,
+          sandbox.sandboxId,
+          hostCwd,
+          { avoidGitIgnore: pi.getFlag("createos-avoid-git-ignore") === true },
+          signal,
+        );
+        return true;
+      });
+      setRunningStatus(ctx, sandbox.sandboxId, sandbox.cwd);
+      return;
+    }
+
+    const watch = await runStartupLoader(ctx, "Starting project file watch…", (signal) =>
+      startProjectWatch(pi, sandbox.sandboxId, hostCwd, signal),
+    );
+    projectWatch = watch;
+    setWatchingStatus(ctx, sandbox.sandboxId, sandbox.cwd);
+  }
 
   // --- Commands ---
 
@@ -47,7 +111,10 @@ export default function (pi: ExtensionAPI) {
     description: "Show the active CreateOS sandbox's status",
     handler: async (_args, ctx) => {
       if (!active) {
-        ctx.ui.notify("No CreateOS sandbox is active. Launch Pi with --createos.", "warning");
+        ctx.ui.notify(
+          "No CreateOS sandbox is active. Launch Pi with --inside-createos-sandbox.",
+          "warning",
+        );
         return;
       }
       try {
@@ -74,16 +141,12 @@ export default function (pi: ExtensionAPI) {
       ];
     },
     handler: async (args, ctx) => {
-      if (!active) {
-        ctx.ui.notify("No sandbox active. Launch with --createos.", "warning");
-        return;
-      }
       const parts = (args ?? "").trim().split(/\s+/);
       const sub = parts[0],
         arg = parts.slice(1).join(" ").trim();
       try {
         switch (sub) {
-          case "create":
+          case "create": {
             if (!arg) {
               ctx.ui.notify("Usage: /network create <name>", "warning");
               return;
@@ -91,8 +154,9 @@ export default function (pi: ExtensionAPI) {
             const net = await cli.createNetwork(pi, arg);
             ctx.ui.notify(`Network created: ${net.name} (${net.id})`, "info");
             break;
+          }
           case "ls":
-          case "list":
+          case "list": {
             const nets = await cli.listNetworks(pi);
             if (!nets.length) {
               ctx.ui.notify("No networks. Create with /network create <name>", "info");
@@ -103,7 +167,8 @@ export default function (pi: ExtensionAPI) {
               "info",
             );
             break;
-          case "show":
+          }
+          case "show": {
             if (!arg) {
               ctx.ui.notify("Usage: /network show <name|id>", "warning");
               return;
@@ -119,6 +184,7 @@ export default function (pi: ExtensionAPI) {
             } else lines.push("No members");
             ctx.ui.notify(lines.join("\n"), "info");
             break;
+          }
           case "rm":
           case "delete":
             if (!arg) {
@@ -134,12 +200,20 @@ export default function (pi: ExtensionAPI) {
               ctx.ui.notify("Usage: /network attach <name|id>", "warning");
               return;
             }
+            if (!active) {
+              ctx.ui.notify("No sandbox active. Launch with --inside-createos-sandbox.", "warning");
+              return;
+            }
             await cli.attachNetwork(pi, active.sandboxId, arg);
             ctx.ui.notify(`Attached sandbox to network "${arg}"`, "info");
             break;
           case "detach":
             if (!arg) {
               ctx.ui.notify("Usage: /network detach <name|id>", "warning");
+              return;
+            }
+            if (!active) {
+              ctx.ui.notify("No sandbox active. Launch with --inside-createos-sandbox.", "warning");
               return;
             }
             await cli.detachNetwork(pi, active.sandboxId, arg);
@@ -230,8 +304,19 @@ export default function (pi: ExtensionAPI) {
   // --- Lifecycle ---
 
   pi.on("session_start", async (event, ctx) => {
-    if (pi.getFlag("createos") !== true) return;
+    if (pi.getFlag("inside-createos-sandbox") !== true) return;
     if (active) return;
+
+    let startupSync: "once" | "watch" | undefined;
+    try {
+      startupSync = selectStartupSync(
+        pi.getFlag("createos-sync-once") === true,
+        pi.getFlag("createos-watch") === true,
+      );
+    } catch (err) {
+      ctx.ui.notify(errorMessage(err), "error");
+      return;
+    }
 
     if (!(await cli.isCreateOSInstalled(pi))) {
       setStatus(ctx, "☁ createos · installing CLI…");
@@ -275,8 +360,8 @@ export default function (pi: ExtensionAPI) {
               }
             }
             active = { sandboxId: prev.sandboxId, cwd: prev.cwd };
+            await setupStartupSync(ctx, startupSync, active);
             ctx.ui.notify(`Reattached · ${shortId(prev.sandboxId)}`, "info");
-            setRunningStatus(ctx, prev.sandboxId, prev.cwd);
             return;
           } catch (err) {
             if (!(err instanceof cli.CLIError && err.isNotFound)) throw err;
@@ -284,9 +369,9 @@ export default function (pi: ExtensionAPI) {
         }
       }
 
-      const shape = stringFlag(pi.getFlag("shape")) ?? "s-2vcpu-2gb";
-      const rootfs = stringFlag(pi.getFlag("rootfs"));
-      const networkFlag = stringFlag(pi.getFlag("network"));
+      const shape = stringFlag(pi.getFlag("createos-shape")) ?? "s-2vcpu-2gb";
+      const rootfs = stringFlag(pi.getFlag("createos-rootfs"));
+      const networkFlag = stringFlag(pi.getFlag("createos-network"));
       const networks = networkFlag
         ? networkFlag
             .split(",")
@@ -311,35 +396,51 @@ export default function (pi: ExtensionAPI) {
       if (persisted)
         pi.appendEntry(SESSION_ENTRY, { sandboxId: sandbox.id, cwd } as SessionEntryData);
 
+      await setupStartupSync(ctx, startupSync, active);
       const secs = ((Date.now() - startedAt) / 1000).toFixed(1);
       ctx.ui.notify(`Sandbox ready · ${shortId(sandbox.id)} · ${secs}s`, "info");
-      setRunningStatus(ctx, sandbox.id, cwd);
     } catch (err) {
       active = null;
       if (createdId)
         try {
           await cli.destroySandbox(pi, createdId);
-        } catch {}
+        } catch (cleanupError) {
+          console.error("CreateOS: failed to clean up sandbox", cleanupError);
+        }
       setStatus(ctx, undefined);
       ctx.ui.notify(`CreateOS: failed — ${errorMessage(err)}`, "error");
     }
   });
 
-  pi.on("before_agent_start", (event) => {
-    if (!active) return;
-    const cwdLine = `Current working directory: ${active.cwd} (CreateOS sandbox ${shortId(active.sandboxId)})`;
+  pi.on("before_agent_start", async (event, ctx) => {
+    const sandbox = active;
+    if (!sandbox) return;
+
+    const pendingSkills = (event.systemPromptOptions.skills ?? []).filter(
+      ({ baseDir }) => !syncedSkillDirectories.has(baseDir),
+    );
+    if (pendingSkills.length > 0) {
+      try {
+        await syncSkillDirectories(pi, sandbox.sandboxId, pendingSkills);
+        pendingSkills.forEach(({ baseDir }) => syncedSkillDirectories.add(baseDir));
+      } catch (error) {
+        ctx.ui.notify(`CreateOS: could not sync skills — ${errorMessage(error)}`, "error");
+      }
+    }
+
+    const cwdLine = `Current working directory: ${sandbox.cwd} (CreateOS sandbox ${shortId(sandbox.sandboxId)})`;
     let systemPrompt = event.systemPrompt.replace(/Current working directory: .*/g, cwdLine);
     // Caveman-style: short, declarative, environment-aware.
     // The model already sees tool descriptions/guidelines — don't repeat them here.
     systemPrompt +=
       "\n\n--- CreateOS Sandbox Environment ---" +
-      `\nSandbox: ${active.sandboxId}` +
-      `\nCwd: ${active.cwd}` +
+      `\nSandbox: ${sandbox.sandboxId}` +
+      `\nCwd: ${sandbox.cwd}` +
       `\nHost dir: ${hostCwd}` +
       "\nAll tools run remotely in this sandbox. You know the sandbox ID and cwd — never run pwd/hostname." +
       "\n" +
       "\nQuick rules:" +
-      `\n- "mount/sync this dir" → sandbox_sync local_dir="${hostCwd}" remote_dir="/root/project"` +
+      `\n- "mount/sync this dir" → sandbox_sync local_dir="${hostCwd}" remote_dir="/root/workspace"` +
       "\n- Port access → sandbox_preview_url (public URL) > sandbox_tunnel (localhost) > device VPN (last resort)" +
       "\n- Multi-node → sandbox_network_create + sandbox_create with network + sandbox_exec on other sandboxes" +
       "\n--- End CreateOS ---";
@@ -347,6 +448,14 @@ export default function (pi: ExtensionAPI) {
   });
 
   pi.on("session_shutdown", async (event, _ctx) => {
+    if (projectWatch) {
+      try {
+        await stopProjectWatch(pi, projectWatch);
+      } catch (stopError) {
+        console.error("CreateOS: failed to stop project watch", stopError);
+      }
+      projectWatch = undefined;
+    }
     if (!active) return;
     if (event.reason === "new" || event.reason === "resume" || event.reason === "fork") return;
     const current = active;
@@ -355,15 +464,59 @@ export default function (pi: ExtensionAPI) {
     // Clean up temp SSH key used by sync.
     try {
       await cleanupTempKey(pi);
-    } catch {}
+    } catch (cleanupError) {
+      console.error("CreateOS: failed to clean up sync key", cleanupError);
+    }
 
+    // The TUI is already stopped by this point on a normal quit (Ctrl+D, double
+    // Ctrl+C, /quit) — ctx.ui.notify cannot render. Write straight to stdout,
+    // same trick pi core uses for its own post-shutdown "resume session" hint.
     const persisted = _ctx.sessionManager.getSessionFile() !== undefined;
-    if (!persisted) {
-      try {
-        await cli.destroySandbox(pi, current.sandboxId);
-      } catch {}
+    if (persisted) {
+      process.stdout.write(
+        `CreateOS: sandbox ${shortId(current.sandboxId)} is still running. Resume this session to reattach, or run: createos sandbox rm ${current.sandboxId}\n`,
+      );
+      return;
+    }
+    process.stdout.write(`CreateOS: destroying sandbox ${shortId(current.sandboxId)}…\n`);
+    try {
+      await cli.destroySandbox(pi, current.sandboxId);
+    } catch (destroyError) {
+      console.error("CreateOS: failed to destroy sandbox", destroyError);
     }
   });
+}
+
+async function runStartupLoader<T>(
+  ctx: ExtensionContext,
+  message: string,
+  operation: (signal?: AbortSignal) => Promise<T>,
+): Promise<T> {
+  if (ctx.mode !== "tui") return operation();
+
+  let failure: unknown;
+  let cancelled = false;
+  const result = await ctx.ui.custom<T | null>((tui, theme, _keybindings, done) => {
+    const loader = new BorderedLoader(tui, theme, message);
+    loader.onAbort = () => {
+      cancelled = true;
+      done(null);
+    };
+    void (async () => {
+      try {
+        done(await operation(loader.signal));
+      } catch (error) {
+        failure = error;
+        done(null);
+      }
+    })();
+    return loader;
+  });
+
+  if (failure !== undefined) throw failure;
+  if (cancelled || result === null || result === undefined)
+    throw new Error("Startup sync cancelled");
+  return result;
 }
 
 function latestSessionEntry(ctx: ExtensionContext): SessionEntryData | undefined {
@@ -380,6 +533,9 @@ function setStatus(ctx: ExtensionContext, text: string | undefined): void {
 }
 function setRunningStatus(ctx: ExtensionContext, id: string, cwd: string): void {
   setStatus(ctx, `☁ createos · ${shortId(id)} · running · ${cwd}`);
+}
+function setWatchingStatus(ctx: ExtensionContext, id: string, cwd: string): void {
+  setStatus(ctx, `☁ createos · ${shortId(id)} · sync watching · ${cwd}`);
 }
 function stringFlag(value: boolean | string | undefined): string | undefined {
   return typeof value === "string" && value.length > 0 ? value : undefined;
