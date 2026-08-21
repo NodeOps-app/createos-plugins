@@ -1,0 +1,37 @@
+{
+  "name": "@createos/opencode",
+  "version": "0.1.0",
+  "description": "OpenCode plugin that runs all tool calls inside a remote CreateOS Sandbox",
+  "type": "module",
+  "main": "dist/index.js",
+  "module": "dist/index.js",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/NodeOps-app/createos-claude-plugins.git",
+    "directory": "packages/opencode-plugin"
+  },
+  "author": "CreateOS",
+  "license": "Apache-2.0",
+  "keywords": [
+    "opencode",
+    "opencode-plugin",
+    "createos",
+    "sandbox"
+  ],
+  "files": [
+    "dist"
+  ],
+  "scripts": {
+    "build": "bun build index.ts --outdir=dist --target node",
+    "build:minify": "bun build index.ts --outdir=dist --target node --minify",
+    "prepublishOnly": "bun run build:minify",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@opencode-ai/plugin": "^1.16.2"
+  },
+  "devDependencies": {
+    "@types/node": "^22",
+    "typescript": "^5.6.0"
+  }
+}
