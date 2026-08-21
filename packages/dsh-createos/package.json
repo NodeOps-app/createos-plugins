@@ -1,0 +1,65 @@
+{
+  "name": "@nodeops-createos/dsh-createos",
+  "version": "0.1.0",
+  "description": "Run the DeepSeek Harness filesystem, subprocesses, and PTY terminals in a CreateOS sandbox",
+  "type": "module",
+  "license": "MIT",
+  "engines": {
+    "node": "^22.19.0 || >=24.0.0"
+  },
+  "scripts": {
+    "link:dsh": "node scripts/link-dsh.mjs",
+    "test": "vitest run",
+    "typecheck": "tsc --noEmit",
+    "check": "npm run link:dsh && npm run typecheck && npm test"
+  },
+  "keywords": [
+    "dsh-plugin",
+    "deepseek-harness",
+    "createos",
+    "sandbox",
+    "remote-execution",
+    "pty"
+  ],
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/NodeOps-app/createos-claude-plugins.git",
+    "directory": "packages/dsh-createos"
+  },
+  "homepage": "https://github.com/NodeOps-app/createos-claude-plugins/tree/main/packages/dsh-createos#readme",
+  "dsh": {
+    "bundle": {
+      "patch": "./cordis.patch.yml"
+    }
+  },
+  "exports": {
+    ".": "./src/index.ts",
+    "./createos": "./src/createos/index.ts",
+    "./fs": "./src/fs/index.ts",
+    "./subprocess": "./src/subprocess/index.ts",
+    "./package.json": "./package.json"
+  },
+  "files": [
+    "src",
+    "cordis.patch.yml",
+    "docs",
+    "README.md",
+    "LICENSE"
+  ],
+  "dependencies": {
+    "@deepseek-ai/schemastery": "3.18.1",
+    "@nodeops-createos/sandbox": "0.8.0"
+  },
+  "peerDependencies": {
+    "@deepseek-ai/cordis": "*",
+    "@deepseek-ai/dsh-brand": "*",
+    "@deepseek-ai/dsh-fs": "*",
+    "@deepseek-ai/dsh-subprocess": "*",
+    "@deepseek-ai/dsh-timeout": "*"
+  },
+  "devDependencies": {
+    "@types/node": "^22.20.0",
+    "typescript": "^6.0.3",
+    "vitest": "^4.1.8"
+  }
+}

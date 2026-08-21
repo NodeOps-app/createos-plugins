@@ -2,14 +2,15 @@
 
 # CreateOS Integrations
 
-**[Claude Code](https://docs.claude.com/en/docs/claude-code), [Codex](https://github.com/openai/codex), [Pi](https://github.com/anthropics/pi) & [OpenCode](https://opencode.ai) plugins for disposable sandbox compute.**
+**[Claude Code](https://docs.claude.com/en/docs/claude-code), [Codex](https://github.com/openai/codex), [Pi](https://github.com/anthropics/pi), [OpenCode](https://opencode.ai) & DeepSeek Harness plugins for disposable sandbox compute.**
 
-Run code **off your machine** in disposable [CreateOS](https://createos.sh) Sandboxes — from Claude Code, Codex, Pi, or OpenCode.
+Run code **off your machine** in disposable [CreateOS](https://createos.sh) Sandboxes — from Claude Code, Codex, Pi, OpenCode, or DeepSeek Harness.
 
 [![Claude Code](https://img.shields.io/badge/Claude%20Code-plugin-6E56CF)](https://docs.claude.com/en/docs/claude-code)
 [![Pi](https://img.shields.io/badge/Pi-extension-F97316)](https://github.com/anthropics/pi)
 [![Codex](https://img.shields.io/badge/Codex-plugin-10A37F)](https://github.com/openai/codex)
 [![OpenCode](https://img.shields.io/badge/OpenCode-plugin-0EA5E9)](https://opencode.ai)
+[![DeepSeek Harness](https://img.shields.io/badge/DeepSeek%20Harness-plugin-111827)](./packages/dsh-createos)
 [![CreateOS](https://img.shields.io/badge/CreateOS-Sandboxes-0EA5E9)](https://createos.sh)
 [![Spawn](https://img.shields.io/badge/create%20to%20first%20command-~200ms-22C55E)](https://createos.sh)
 [![PRs welcome](https://img.shields.io/badge/PRs-welcome-brightgreen)](#contributing)
@@ -83,16 +84,31 @@ opencode plugin @createos/opencode --global
 opencode
 ```
 
-The `createos` CLI **auto-installs** on first use. Sign in once with `createos login` (browser OAuth, run it in your own terminal) or `export CREATEOS_API_KEY=<key>`; check with `cos auth`. Prefer a local checkout? See [Install](#install).
+**DeepSeek Harness:**
+
+```bash
+# 1. Install the bundle from this monorepo checkout
+dsh plugin --profile web add /path/to/createos-claude-plugins/packages/dsh-createos
+
+# 2. Configure CreateOS sandbox credentials
+export CREATEOS_SANDBOX_API_KEY='...'
+export CREATEOS_SANDBOX_SHAPE='s-2vcpu-2gb'
+
+# 3. Start DSH Web from the workspace path the remote tools should use
+dsh web
+```
+
+The Claude Code, Codex, Pi, and OpenCode integrations use the `createos` CLI, which **auto-installs** on first use. Sign in once with `createos login` (browser OAuth, run it in your own terminal) or `export CREATEOS_API_KEY=<key>`; check with `cos auth`. The DeepSeek Harness integration uses `@nodeops-createos/sandbox` and `CREATEOS_SANDBOX_*` environment variables. Prefer a local checkout? See [Install](#install).
 
 ## Packages
 
-| Package                                                 | What it does                                                                                                                                                                                                                                               |
-| ------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
-| [**claude-code-plugin**](./packages/claude-code-plugin) | Hooks-based Claude Code plugin — offload, parallel fanout, scratch shell, reusable box with sync, port tunnel, public HTTPS expose, private-network clusters, BYO-S3 disk mounts, WireGuard VPN, and snapshot/fork — all driving the authed `createos` CLI. |
-| [**pi-extension**](./packages/pi-extension)             | Pi coding agent extension with all 33 `sandbox_*` tools for lifecycle, configuration, port tunnels, file sync, private networks, persistent disks, and device VPN. Built-in tools route remotely only with `--inside-createos-sandbox`.                    |
-| [**@createos/codex**](./packages/codex-plugin)          | Codex plugin — skill that teaches the `createos` CLI for sandbox lifecycle, networking, disks, and VPN.                                                                                                                                                     |
-| [**@createos/opencode**](./packages/opencode-plugin)    | OpenCode plugin with 33 sandbox tools (`sandbox_exec`, `sandbox_push`, `sandbox_pull`, networks, disks, VPN, sync) and system prompt injection for sandbox-first workflows.                                                                                 |
+| Package                                                       | What it does                                                                                                                                                                                                                                                |
+| ------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| [**claude-code-plugin**](./packages/claude-code-plugin)       | Hooks-based Claude Code plugin — offload, parallel fanout, scratch shell, reusable box with sync, port tunnel, public HTTPS expose, private-network clusters, BYO-S3 disk mounts, WireGuard VPN, and snapshot/fork — all driving the authed `createos` CLI. |
+| [**pi-extension**](./packages/pi-extension)                   | Pi coding agent extension with all 33 `sandbox_*` tools for lifecycle, configuration, port tunnels, file sync, private networks, persistent disks, and device VPN. Built-in tools route remotely only with `--inside-createos-sandbox`.                     |
+| [**@createos/codex**](./packages/codex-plugin)                | Codex plugin — skill that teaches the `createos` CLI for sandbox lifecycle, networking, disks, and VPN.                                                                                                                                                     |
+| [**@createos/opencode**](./packages/opencode-plugin)          | OpenCode plugin with 33 sandbox tools (`sandbox_exec`, `sandbox_push`, `sandbox_pull`, networks, disks, VPN, sync) and system prompt injection for sandbox-first workflows.                                                                                 |
+| [**@nodeops-createos/dsh-createos**](./packages/dsh-createos) | DeepSeek Harness bundle that replaces `ctx.fs` and `ctx.subprocess` together, so Bash, file, LSP, and PTY consumers operate inside one CreateOS sandbox without provider-specific tool forks.                                                               |
 
 ## Claude Code — commands at a glance
 
@@ -166,6 +182,18 @@ Full tool inventory lives in the [**Pi Extension README**](./packages/pi-extensi
 
 Full reference in [opencode-plugin/README.md](./packages/opencode-plugin/README.md).
 
+## DeepSeek Harness — execution world
+
+The DSH bundle replaces the local filesystem and subprocess providers with CreateOS-backed providers over one shared sandbox. It uses the CreateOS SDK and managed-process API rather than the `createos` CLI.
+
+| Surface          | What runs remotely                                 |
+| ---------------- | -------------------------------------------------- |
+| `ctx.fs`         | read, write, edit, glob, search, and atomic writes |
+| `ctx.subprocess` | one-shot Bash commands and managed process waits   |
+| PTY terminals    | persistent terminal sessions via managed PTYs      |
+
+Full reference in [dsh-createos/README.md](./packages/dsh-createos/README.md).
+
 ## Install
 
 **From GitHub (recommended):**
@@ -183,6 +211,12 @@ git clone https://github.com/NodeOps-app/createos-claude-plugins
 /plugin install @createos/claude-code@createos
 ```
 
+**DeepSeek Harness from a local checkout:**
+
+```bash
+dsh plugin --profile web add /path/to/createos-claude-plugins/packages/dsh-createos
+```
+
 **Dev (instant, no install):**
 
 ```bash
@@ -194,6 +228,7 @@ claude --plugin-dir /path/to/createos-claude-plugins/packages/claude-code-plugin
 
 - **[CreateOS](https://createos.sh) account** — the `createos` CLI auto-installs on first use. Opt out with `COS_NO_AUTOINSTALL=1`.
 - **Sign-in** — `createos login` in your own terminal (interactive browser OAuth; Claude can't drive a TTY prompt), or `export CREATEOS_API_KEY=<key>` to skip the browser entirely. `cos auth` reports which is active.
+- **DeepSeek Harness env:** `CREATEOS_SANDBOX_API_KEY` and `CREATEOS_SANDBOX_SHAPE`; optional `CREATEOS_SANDBOX_BASE_URL` and `CREATEOS_SANDBOX_ROOTFS`.
 - **Host tools:** `jq`, `tar`, `bash`, `base64`; `perl` for ANSI/path handling; `curl` for the one-time CLI install.
 
 ## Safety
@@ -226,11 +261,17 @@ createos-claude-plugins/              # marketplace root
 │  │  ├─ scripts/cos, session-start.sh
 │  │  ├─ skills/using-createos-sandbox/
 │  │  └─ README.md
-│  └─ opencode-plugin/               # OpenCode plugin
-│     ├─ index.ts                     # plugin entry (CreateOSPlugin)
-│     ├─ src/cli.ts                   # createos CLI wrappers
-│     ├─ src/tools.ts                 # 33 tool definitions
-│     ├─ src/util.ts                  # shellQuote, shortId, joinPath
+│  ├─ opencode-plugin/               # OpenCode plugin
+│  │  ├─ index.ts                     # plugin entry (CreateOSPlugin)
+│  │  ├─ src/cli.ts                   # createos CLI wrappers
+│  │  ├─ src/tools.ts                 # 33 tool definitions
+│  │  ├─ src/util.ts                  # shellQuote, shortId, joinPath
+│  │  └─ README.md
+│  └─ dsh-createos/                  # DeepSeek Harness plugin
+│     ├─ cordis.patch.yml             # DSH bundle patch
+│     ├─ src/createos/                # sandbox owner + managed-process client
+│     ├─ src/fs/                      # CreateOS-backed ctx.fs provider
+│     ├─ src/subprocess/              # CreateOS-backed ctx.subprocess + PTY provider
 │     └─ README.md
 ├─ apps/                              # (future starter templates)
 ├─ docs/
@@ -240,7 +281,7 @@ createos-claude-plugins/              # marketplace root
 
 ## Contributing
 
-Issues and PRs welcome. All three plugins are thin surfaces over the [`createos`](https://createos.sh) CLI — keep the command surfaces aligned.
+Issues and PRs welcome. The Claude Code, Codex, Pi, and OpenCode plugins are thin surfaces over the [`createos`](https://createos.sh) CLI; keep those command surfaces aligned. The DeepSeek Harness bundle uses the CreateOS SDK and managed-process API, so keep it aligned with the SDK and control-plane API.
 
 ## Links
 
@@ -251,3 +292,4 @@ Issues and PRs welcome. All three plugins are thin surfaces over the [`createos`
 - [Pi extension README](./packages/pi-extension/README.md)
 - [Codex plugin README](./packages/codex-plugin/README.md)
 - [OpenCode plugin README](./packages/opencode-plugin/README.md)
+- [DeepSeek Harness plugin README](./packages/dsh-createos/README.md)
