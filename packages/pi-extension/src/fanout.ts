@@ -34,7 +34,9 @@ export interface FanoutResult {
 }
 
 export function createScenarioCommand(scenario: FanoutScenario): string {
-  const environment = scenario.environment.map(({ name, value }) => `${name}=${shellQuote(value)}`).join(" ");
+  const environment = scenario.environment
+    .map(({ name, value }) => `${name}=${shellQuote(value)}`)
+    .join(" ");
   return `cd ${shellQuote(REMOTE_DIR)} && ${environment ? `${environment} ` : ""}${scenario.command}`;
 }
 
@@ -54,7 +56,9 @@ export async function fanoutScenarios(
     }
   }
 
-  await Promise.all(Array.from({ length: Math.min(CONCURRENCY, options.scenarios.length) }, worker));
+  await Promise.all(
+    Array.from({ length: Math.min(CONCURRENCY, options.scenarios.length) }, worker),
+  );
   if (signal?.aborted) throw new Error("aborted");
   return results;
 }
@@ -130,19 +134,31 @@ async function runForeground(
     };
   }
   if (result.exitCode !== 0) {
-    return { name, sandboxId, verified: false, output: result.stdout, error: "scenario command failed" };
+    return {
+      name,
+      sandboxId,
+      verified: false,
+      output: result.stdout,
+      error: "scenario command failed",
+    };
   }
   return { name, sandboxId, verified: true, output: result.stdout };
 }
 
 export function createHealthCheckUrl(url: string, path = "/"): URL {
-  if (!path.startsWith("/") || path.startsWith("//")) throw new Error("health check path must be relative");
+  if (!path.startsWith("/") || path.startsWith("//"))
+    throw new Error("health check path must be relative");
   const endpoint = new URL(path, url);
-  if (endpoint.origin !== new URL(url).origin) throw new Error("health check must use the sandbox ingress URL");
+  if (endpoint.origin !== new URL(url).origin)
+    throw new Error("health check must use the sandbox ingress URL");
   return endpoint;
 }
 
-async function verifyScenario(url: string, scenario: FanoutScenario, signal?: AbortSignal): Promise<boolean> {
+async function verifyScenario(
+  url: string,
+  scenario: FanoutScenario,
+  signal?: AbortSignal,
+): Promise<boolean> {
   const endpoint = createHealthCheckUrl(url, scenario.healthCheckPath);
   for (let attempt = 0; attempt < 15; attempt += 1) {
     if (signal?.aborted) throw new Error("aborted");
@@ -151,7 +167,11 @@ async function verifyScenario(url: string, scenario: FanoutScenario, signal?: Ab
       const requestSignal = signal ? AbortSignal.any([signal, timeout]) : timeout;
       const response = await fetch(endpoint, { signal: requestSignal, redirect: "error" });
       const body = await response.text();
-      if (response.ok && (!scenario.healthCheckContains || body.includes(scenario.healthCheckContains))) return true;
+      if (
+        response.ok &&
+        (!scenario.healthCheckContains || body.includes(scenario.healthCheckContains))
+      )
+        return true;
     } catch {
       // The process may still be starting.
     }

@@ -1,0 +1,55 @@
+# Replace the local execution world with one short-lived CreateOS sandbox.
+# The filesystem and subprocess seams move together so Bash, PTY terminals,
+# LSP servers, and file tools all observe the same remote working directory.
+
+- id: fs-sandbox
+  disabled: true
+
+- id: subprocess
+  disabled: true
+
+# Host-kernel confinement cannot constrain processes running in CreateOS.
+- id: sandbox
+  disabled: true
+
+- id: bash-sandbox
+  disabled: true
+
+- id: pwsh-sandbox
+  disabled: true
+
+- id: permission
+  disabled: true
+
+- id: sandbox-policy
+  config:
+    mode: danger-full-access
+    workspaceRoot: !!js process.cwd()
+
+- insert:
+    - id: createos
+      name: "@nodeops-createos/dsh-createos/createos"
+      config:
+        baseUrl: !!js process.env.CREATEOS_SANDBOX_BASE_URL
+        shape: !!js process.env.CREATEOS_SANDBOX_SHAPE
+        rootfs: !!js process.env.CREATEOS_SANDBOX_ROOTFS
+        cwd: !!js process.cwd()
+        lifetimeMs: 300000
+
+    - id: fs-createos
+      name: "@nodeops-createos/dsh-createos/fs"
+
+    - id: subprocess-createos
+      name: "@nodeops-createos/dsh-createos/subprocess"
+
+    - id: bash-local
+      name: "@deepseek-ai/dsh-bash-local"
+
+    - id: terminal
+      name: "@deepseek-ai/dsh-terminal"
+
+    - id: terminal-bash
+      name: "@deepseek-ai/dsh-terminal-bash"
+
+    - id: tool-terminal
+      name: "@deepseek-ai/dsh-tool-terminal"

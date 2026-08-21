@@ -1,6 +1,9 @@
+node_modules/
 packages/opencode-plugin/node_modules/
+packages/dsh-createos/node_modules/
 packages/opencode-plugin/bun.lock
 package.json
+!packages/*/package.json
 package-lock.json
 .pi*
 .claude
@@ -9,4 +12,6 @@ package-lock.json
 !.env.example
 lib/
 docs
+!docs/
+!packages/*/docs/
 .mcp.json
