@@ -2,12 +2,13 @@
 
 # CreateOS Integrations
 
-**[Claude Code](https://docs.claude.com/en/docs/claude-code) plugin, [Pi](https://github.com/anthropics/pi) extension & [OpenCode](https://opencode.ai) plugin for disposable sandbox compute.**
+**[Claude Code](https://docs.claude.com/en/docs/claude-code), [Codex](https://github.com/openai/codex), [Pi](https://github.com/anthropics/pi) & [OpenCode](https://opencode.ai) plugins for disposable sandbox compute.**
 
-Run code **off your machine** in disposable [CreateOS](https://createos.sh) Sandboxes — from Claude Code, Pi, or OpenCode.
+Run code **off your machine** in disposable [CreateOS](https://createos.sh) Sandboxes — from Claude Code, Codex, Pi, or OpenCode.
 
 [![Claude Code](https://img.shields.io/badge/Claude%20Code-plugin-6E56CF)](https://docs.claude.com/en/docs/claude-code)
 [![Pi](https://img.shields.io/badge/Pi-extension-F97316)](https://github.com/anthropics/pi)
+[![Codex](https://img.shields.io/badge/Codex-plugin-10A37F)](https://github.com/openai/codex)
 [![OpenCode](https://img.shields.io/badge/OpenCode-plugin-0EA5E9)](https://opencode.ai)
 [![CreateOS](https://img.shields.io/badge/CreateOS-Sandboxes-0EA5E9)](https://createos.sh)
 [![Spawn](https://img.shields.io/badge/create%20to%20first%20command-~200ms-22C55E)](https://createos.sh)
@@ -59,6 +60,19 @@ pi --inside-createos-sandbox --createos-sync-once
 pi --inside-createos-sandbox --createos-watch
 ```
 
+**Codex:**
+
+```bash
+# 1. Add the marketplace
+codex plugin marketplace add NodeOps-app/createos-claude-plugins
+
+# 2. Install the plugin
+codex plugin add @createos/codex@createos
+
+# 3. Launch codex — the skill teaches createos CLI usage
+codex
+```
+
 **OpenCode:**
 
 ```bash
@@ -77,6 +91,7 @@ The `createos` CLI **auto-installs** on first use. Sign in once with `createos l
 | ------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
 | [**claude-code-plugin**](./packages/claude-code-plugin) | Hooks-based Claude Code plugin — offload, parallel fanout, scratch shell, reusable box with sync, port tunnel, public HTTPS expose, private-network clusters, BYO-S3 disk mounts, WireGuard VPN, and snapshot/fork — all driving the authed `createos` CLI. |
 | [**pi-extension**](./packages/pi-extension)             | Pi coding agent extension with all 33 `sandbox_*` tools for lifecycle, configuration, port tunnels, file sync, private networks, persistent disks, and device VPN. Built-in tools route remotely only with `--inside-createos-sandbox`.                    |
+| [**@createos/codex**](./packages/codex-plugin)          | Codex plugin — skill that teaches the `createos` CLI for sandbox lifecycle, networking, disks, and VPN.                                                                                                                                                     |
 | [**@createos/opencode**](./packages/opencode-plugin)    | OpenCode plugin with 33 sandbox tools (`sandbox_exec`, `sandbox_push`, `sandbox_pull`, networks, disks, VPN, sync) and system prompt injection for sandbox-first workflows.                                                                                 |
 
 ## Claude Code — commands at a glance
@@ -206,6 +221,11 @@ createos-claude-plugins/              # marketplace root
 │  │  ├─ index.ts                     # extension entry point
 │  │  ├─ src/                         # tools, CLI wrappers, ops
 │  │  └─ README.md
+│  ├─ codex-plugin/                  # Codex plugin
+│  │  ├─ manifest.json
+│  │  ├─ scripts/cos, session-start.sh
+│  │  ├─ skills/using-createos-sandbox/
+│  │  └─ README.md
 │  └─ opencode-plugin/               # OpenCode plugin
 │     ├─ index.ts                     # plugin entry (CreateOSPlugin)
 │     ├─ src/cli.ts                   # createos CLI wrappers
@@ -229,4 +249,5 @@ Issues and PRs welcome. All three plugins are thin surfaces over the [`createos`
 - [OpenCode plugins](https://opencode.ai/docs/plugins/) — OpenCode plugin docs
 - [Claude Code plugin README](./packages/claude-code-plugin/README.md)
 - [Pi extension README](./packages/pi-extension/README.md)
+- [Codex plugin README](./packages/codex-plugin/README.md)
 - [OpenCode plugin README](./packages/opencode-plugin/README.md)
