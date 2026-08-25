@@ -53,6 +53,42 @@ source, back up your binary before you run `build.sh`.
 
 ## Install
 
+One command does every step. It checks the prerequisites, installs the plugin,
+writes its configuration, and binds its keys.
+
+```bash
+createos sandbox setup herdr
+```
+
+Check first, change nothing:
+
+```bash
+createos sandbox setup herdr --doctor
+```
+
+Pick the agent and the sandbox size while you install:
+
+```bash
+createos sandbox setup herdr --agent codex --shape s-4vcpu-8gb
+```
+
+| Flag                  | What it does                                                  |
+| --------------------- | ------------------------------------------------------------- |
+| `--doctor`            | Report the prerequisites and stop.                             |
+| `--local <path>`      | Link a local checkout instead of installing from GitHub.       |
+| `--agent <kind>`      | `claude-code`, `codex`, `opencode`, `pi`, `cursor`, `shell`.    |
+| `--shape`, `--rootfs` | Sandbox size and image.                                        |
+| `--auto-pause`        | Pause a sandbox after this long with no activity.              |
+| `--remote-root`       | Where the worktree lands inside the sandbox.                   |
+| `--no-keys`           | Leave your `config.toml` alone.                                |
+| `--force`             | Replace an existing plugin `config.json`.                      |
+
+The command backs up `config.toml` before it adds keys, adds only the bindings
+you do not already have, and never touches an existing plugin `config.json`
+unless you pass `--force`. Undo the keys with `herdr config reset-keys`.
+
+### By hand
+
 ```bash
 herdr plugin install NodeOps-app/createos-claude-plugins/packages/herdr-plugin
 ```
@@ -75,6 +111,9 @@ installed `createos v0.0.24` to `/usr/local/bin` and wrote that path into
 `run.sh`. A second run upgraded in place and exited 0.
 
 ## Keybindings
+
+`createos sandbox setup herdr` writes these for you. This section is for anyone
+who used `--no-keys`, or who wants different keys.
 
 Herdr ignores keys declared in a plugin manifest. Add them to
 `~/.config/herdr/config.toml`, then run `herdr config check` and
@@ -229,3 +268,7 @@ Measured live on Herdr 0.8.2 and CreateOS CLI v0.0.24, with Claude Code 2.1.245:
 - All five agent installers resolved their binary inside a sandbox.
 - `build.sh` installed `createos v0.0.24` in a clean sandbox, then upgraded in
   place on a second run.
+- `createos sandbox setup herdr --local … --agent codex` ran against an isolated
+  `HOME`: it linked the plugin, ran the build step, wrote `config.json`, added 6
+  keybindings, and backed up `config.toml`. `herdr config check` reported `ok`.
+  A second run added nothing and kept the existing config.
