@@ -4,11 +4,12 @@ Public plugin marketplace and integrations for CreateOS Sandbox. Three packages
 ship IDE plugins that drive the authed `createos` CLI to run ad-hoc / heavy /
 untrusted code in disposable CreateOS sandboxes:
 
-| Package              | IDE         | Path                           |
-| -------------------- | ----------- | ------------------------------ |
-| `claude-code-plugin` | Claude Code | `packages/claude-code-plugin/` |
-| `pi-extension`       | Pi          | `packages/pi-extension/`       |
-| `@createos/opencode` | OpenCode    | `packages/opencode-plugin/`    |
+| Package                          | IDE / host       | Path                           |
+| -------------------------------- | ---------------- | ------------------------------ |
+| `claude-code-plugin`             | Claude Code      | `packages/claude-code-plugin/` |
+| `pi-extension`                   | Pi               | `packages/pi-extension/`       |
+| `@createos/opencode`             | OpenCode         | `packages/opencode-plugin/`    |
+| `@nodeops-createos/dsh-createos` | DeepSeek Harness | `packages/dsh-createos/`       |
 
 Marketplace index is the root `README.md`; each package has its own `README.md`.
 
@@ -17,10 +18,10 @@ Marketplace index is the root `README.md`; each package has its own `README.md`.
 Architectural decisions live in `docs/adr/`. Read the relevant one before
 reworking the thing it covers.
 
-| ADR                                        | Decision                                                                                 | Status                     |
-| ------------------------------------------ | ---------------------------------------------------------------------------------------- | -------------------------- |
-| [0001](./docs/adr/0001-cos-bash-driver.md) | `cos`, a bash driver, as the plugin's execution engine — not the `createos` CLI directly | accepted, **under review** |
-| [0003](./docs/adr/0003-pi-extension-prompt-surface.md) | pi-extension prompt surface: `promptGuidelines` only where they add signal | accepted |
+| ADR                                                    | Decision                                                                                 | Status                     |
+| ------------------------------------------------------ | ---------------------------------------------------------------------------------------- | -------------------------- |
+| [0001](./docs/adr/0001-cos-bash-driver.md)             | `cos`, a bash driver, as the plugin's execution engine — not the `createos` CLI directly | accepted, **under review** |
+| [0003](./docs/adr/0003-pi-extension-prompt-surface.md) | pi-extension prompt surface: `promptGuidelines` only where they add signal               | accepted                   |
 
 ADR-0001 is load-bearing for anyone touching `scripts/cos`, the skill, or the
 slash commands. Two things it records that are easy to trip over:

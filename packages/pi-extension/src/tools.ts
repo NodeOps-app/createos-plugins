@@ -143,14 +143,30 @@ export function registerTools(pi: ExtensionAPI, getActive: () => ToolSandbox | n
               }),
             ),
           ),
-          port: Type.Optional(Type.Integer({ minimum: 1, maximum: 65535, description: "Server port; omit for a foreground test" })),
-          health_check_path: Type.Optional(Type.String({ description: "HTTP path to check (default: /)" })),
-          health_check_contains: Type.Optional(Type.String({ description: "Expected text in a successful health response" })),
+          port: Type.Optional(
+            Type.Integer({
+              minimum: 1,
+              maximum: 65535,
+              description: "Server port; omit for a foreground test",
+            }),
+          ),
+          health_check_path: Type.Optional(
+            Type.String({ description: "HTTP path to check (default: /)" }),
+          ),
+          health_check_contains: Type.Optional(
+            Type.String({ description: "Expected text in a successful health response" }),
+          ),
         }),
         { minItems: 1, maxItems: 25, description: "Independent scenarios to run" },
       ),
-      source_dir: Type.Optional(Type.String({ description: "Absolute local project directory (default: current directory)" })),
-      name_prefix: Type.Optional(Type.String({ description: "Sandbox name prefix (default: scenario)" })),
+      source_dir: Type.Optional(
+        Type.String({
+          description: "Absolute local project directory (default: current directory)",
+        }),
+      ),
+      name_prefix: Type.Optional(
+        Type.String({ description: "Sandbox name prefix (default: scenario)" }),
+      ),
       shape: Type.Optional(Type.String({ description: "Sandbox size (default: s-2vcpu-2gb)" })),
       rootfs: Type.Optional(Type.String({ description: "Base image or template" })),
     }),
