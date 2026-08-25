@@ -1,8 +1,8 @@
 # CLAUDE.md — createos (integrations)
 
-Public plugin marketplace and integrations for CreateOS Sandbox. Three packages
-ship IDE plugins that drive the authed `createos` CLI to run ad-hoc / heavy /
-untrusted code in disposable CreateOS sandboxes:
+Public plugin marketplace and integrations for CreateOS Sandbox. Five packages
+ship host integrations that drive the authed `createos` CLI to run ad-hoc /
+heavy / untrusted code in disposable CreateOS sandboxes:
 
 | Package                          | IDE / host       | Path                           |
 | -------------------------------- | ---------------- | ------------------------------ |
@@ -10,6 +10,15 @@ untrusted code in disposable CreateOS sandboxes:
 | `pi-extension`                   | Pi               | `packages/pi-extension/`       |
 | `@createos/opencode`             | OpenCode         | `packages/opencode-plugin/`    |
 | `@nodeops-createos/dsh-createos` | DeepSeek Harness | `packages/dsh-createos/`       |
+| `createos.sandbox`               | Herdr            | `packages/herdr-plugin/`       |
+
+`herdr-plugin/` targets [Herdr](https://herdr.dev), a terminal workspace
+manager rather than a coding agent, so it inverts the shape of the others.
+Instead of teaching an agent to use sandboxes, it puts the **agent itself**
+inside a sandbox and attaches its PTY to a Herdr pane. It is TypeScript run by
+`bun`, and it calls the `createos` CLI and the `herdr` CLI as subprocesses —
+Herdr has no plugin SDK, its CLI is the whole plugin API. Read
+`packages/herdr-plugin/README.md` before touching it.
 
 Marketplace index is the root `README.md`; each package has its own `README.md`.
 
@@ -22,6 +31,7 @@ reworking the thing it covers.
 | ------------------------------------------------------ | ---------------------------------------------------------------------------------------- | -------------------------- |
 | [0001](./docs/adr/0001-cos-bash-driver.md)             | `cos`, a bash driver, as the plugin's execution engine — not the `createos` CLI directly | accepted, **under review** |
 | [0003](./docs/adr/0003-pi-extension-prompt-surface.md) | pi-extension prompt surface: `promptGuidelines` only where they add signal               | accepted                   |
+| [0004](./docs/adr/0004-herdr-plugin-shape.md)          | Herdr plugin: thin TypeScript over the `createos` CLI, not Rust and not a receipt harness | accepted                   |
 
 ADR-0001 is load-bearing for anyone touching `scripts/cos`, the skill, or the
 slash commands. Two things it records that are easy to trip over:
