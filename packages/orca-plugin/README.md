@@ -20,7 +20,7 @@ the `createos` CLI for every lifecycle phase.
 Check the first three with:
 
 ```
-createos setup orca --doctor
+createos sandbox setup orca --doctor
 ```
 
 ## Install

@@ -11,7 +11,7 @@ untrusted code in disposable CreateOS sandboxes:
 | `@createos/opencode`             | OpenCode         | `packages/opencode-plugin/`    |
 | `@nodeops-createos/dsh-createos` | DeepSeek Harness | `packages/dsh-createos/`       |
 
-A fourth package, `orca-plugin/`, is not an IDE plugin in that sense — it holds
+One more package, `orca-plugin/`, is not an IDE plugin in that sense — it holds
 no skill or tool code. It registers one Orca VM recipe (`orca-plugin.json` +
 `vm-recipe.json`) that runs a whole Orca workspace inside a CreateOS Sandbox, by
 shelling out to `createos setup orca --recipe`. It is not discovered through
