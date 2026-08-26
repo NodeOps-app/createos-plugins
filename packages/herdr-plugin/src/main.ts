@@ -190,12 +190,16 @@ function install(box: string, agentKey: string): string {
   return resolved.split("\n").pop() as string;
 }
 
+// Every flag goes before the sandbox name. The CLI parses flags with urfave/cli,
+// which stops at the first positional argument, so a --cwd written after the box
+// name is discarded without an error and the agent starts in the home directory
+// instead of the uploaded worktree. Fixed CLI-side too, but this order also works
+// on already-released CLI versions.
 function launch(box: string, bin: string, remote: string): string {
   const started = cosJson<{ process_id: string }>([
     "sandbox",
     "process",
     "start",
-    box,
     "--pty",
     "--cwd",
     remote,
@@ -203,6 +207,7 @@ function launch(box: string, bin: string, remote: string): string {
     "40",
     "--cols",
     "120",
+    box,
     "--",
     bin,
   ]);
@@ -271,9 +276,9 @@ function start(): void {
   } catch (error) {
     let cleanup = `Deleted the sandbox ${name} (${box.id}).`;
     try {
-      cos(["sandbox", "rm", box.id, "--yes"]);
+      cos(["sandbox", "rm", "--yes", box.id]);
     } catch {
-      cleanup = `The sandbox ${name} (${box.id}) is still running and is not mapped to any pane. Delete it with: createos sandbox rm ${box.id} --yes`;
+      cleanup = `The sandbox ${name} (${box.id}) is still running and is not mapped to any pane. Delete it with: createos sandbox rm --yes ${box.id}`;
     }
     throw new Fail(`${(error as Error).message}\n${cleanup}`);
   }
@@ -313,11 +318,11 @@ function sync(): void {
     "--no-focus",
   ];
   const target = paneIdOf(herdr(split));
+  // Flags first, sandbox name last. See the comment on launch().
   const command = [
     CREATEOS,
     "sandbox",
     "sync",
-    entry.boxId,
     "--local",
     entry.local,
     "--remote",
@@ -328,6 +333,7 @@ function sync(): void {
   ];
   for (const pattern of cfg.syncExcludes ?? [".git", "node_modules"])
     command.push("--exclude", pattern);
+  command.push(entry.boxId);
   herdr(["pane", "rename", target, `sync ${entry.box}`]);
   herdr(["pane", "run", target, ...command]);
   result({ action: "sync", ok: true, box: entry.box, pane: target });
@@ -404,7 +410,7 @@ function remove(): void {
     );
     return;
   }
-  cos(["sandbox", "rm", entry.boxId, "--yes"]);
+  cos(["sandbox", "rm", "--yes", entry.boxId]);
   writeEntry(pane, null);
   result({ action: "delete", ok: true, box: entry.box });
   process.stdout.write(`Deleted ${entry.box} and forgot the mapping for pane ${pane}.\n`);
