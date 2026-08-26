@@ -16,3 +16,4 @@ docs
 !packages/*/docs/
 .mcp.json
 packages/herdr-plugin/run.sh
+docs
