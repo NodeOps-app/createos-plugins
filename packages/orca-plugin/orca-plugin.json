@@ -1,0 +1,15 @@
+{
+  "manifestVersion": 1,
+  "id": "createos-sandbox",
+  "publisher": "nodeops",
+  "name": "CreateOS Sandbox",
+  "version": "0.1.0",
+  "description": "Run an Orca workspace on a disposable CreateOS Sandbox microVM instead of your laptop.",
+  "author": { "name": "pratikbin", "url": "https://createos.sh" },
+  "repository": "https://github.com/NodeOps-app/createos-plugin",
+  "engines": { "orca": ">=1.4.0" },
+  "pluginApi": 1,
+  "contributes": {
+    "vmRecipes": [{ "path": "vm-recipe.json" }]
+  }
+}

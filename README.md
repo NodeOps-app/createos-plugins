@@ -110,6 +110,30 @@ The Claude Code, Codex, Pi, and OpenCode integrations use the `createos` CLI, wh
 | [**@createos/opencode**](./packages/opencode-plugin)          | OpenCode plugin with 33 sandbox tools (`sandbox_exec`, `sandbox_push`, `sandbox_pull`, networks, disks, VPN, sync) and system prompt injection for sandbox-first workflows.                                                                                 |
 | [**@nodeops-createos/dsh-createos**](./packages/dsh-createos) | DeepSeek Harness bundle that replaces `ctx.fs` and `ctx.subprocess` together, so Bash, file, LSP, and PTY consumers operate inside one CreateOS sandbox without provider-specific tool forks.                                                               |
 | [**createos.sandbox**](./packages/herdr-plugin)               | Herdr plugin that runs Claude Code, Codex, OpenCode, Pi, or Cursor **inside** a CreateOS Sandbox and attaches its PTY to a Herdr pane. One pane maps to one sandbox, with filtered upload, two-way sync, patch apply back, and Herdr agent detection.        |
+| [**orca-plugin**](./packages/orca-plugin)                     | Orca VM recipe — runs a whole Orca workspace on a disposable microVM instead of your laptop. Pushes your working tree, uncommitted edits included, so no git token reaches the box. Optionally installs Claude Code, Codex, Cursor, OpenCode, or Pi.        |
+
+## Orca — run a workspace on a sandbox
+
+Orca creates one disposable microVM per workspace and connects to it over SSH, so
+builds, installs, and test runs stay off your laptop.
+
+```bash
+# 1. Clone this repo, then in Orca:
+#    Settings > Plugins > Dev Paths > add packages/orca-plugin
+# 2. Create a workspace, and under "Run on" pick:
+#    Per-Workspace Environment > CreateOS Sandbox
+```
+
+Pick which coding agents get installed with `CREATEOS_AGENTS`:
+
+```bash
+CREATEOS_AGENTS=claude,codex
+```
+
+Your project needs a git remote — Orca matches remote identity to confirm the
+sandbox checkout is the same project. Suspend and resume are not supported yet.
+Setup, configuration, limits, and troubleshooting live in the
+[**Orca Plugin README**](./packages/orca-plugin/README.md).
 
 ## Claude Code — commands at a glance
 
@@ -304,3 +328,4 @@ Issues and PRs welcome. The Claude Code, Codex, Pi, and OpenCode plugins are thi
 - [DeepSeek Harness plugin README](./packages/dsh-createos/README.md)
 - [Herdr plugin README](./packages/herdr-plugin/README.md)
 - [Herdr plugins](https://herdr.dev/docs/plugins/) — how Herdr plugins work
+- [Orca plugin README](./packages/orca-plugin/README.md)

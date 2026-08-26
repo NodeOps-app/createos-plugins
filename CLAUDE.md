@@ -20,6 +20,18 @@ inside a sandbox and attaches its PTY to a Herdr pane. It is TypeScript run by
 Herdr has no plugin SDK, its CLI is the whole plugin API. Read
 `packages/herdr-plugin/README.md` before touching it.
 
+One more package, `orca-plugin/`, is not an IDE plugin in that sense — it holds
+no skill or tool code. It registers one Orca VM recipe (`orca-plugin.json` +
+`vm-recipe.json`) that runs a whole Orca workspace inside a CreateOS Sandbox, by
+shelling out to `createos setup orca --recipe`. It is not discovered through
+`.claude-plugin/marketplace.json` — that marketplace file is Claude Code-specific
+and does not apply here.
+
+Orca's git-URL installer clones a whole repository and requires
+`orca-plugin.json` at its root, so this subdirectory cannot be installed that
+way yet. The working route is Settings > Plugins > Dev Paths pointed at
+`packages/orca-plugin`. Read `packages/orca-plugin/README.md` before touching it.
+
 Marketplace index is the root `README.md`; each package has its own `README.md`.
 
 ## Decisions
