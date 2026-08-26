@@ -109,6 +109,7 @@ The Claude Code, Codex, Pi, and OpenCode integrations use the `createos` CLI, wh
 | [**@createos/codex**](./packages/codex-plugin)                | Codex plugin — skill that teaches the `createos` CLI for sandbox lifecycle, networking, disks, and VPN.                                                                                                                                                     |
 | [**@createos/opencode**](./packages/opencode-plugin)          | OpenCode plugin with 33 sandbox tools (`sandbox_exec`, `sandbox_push`, `sandbox_pull`, networks, disks, VPN, sync) and system prompt injection for sandbox-first workflows.                                                                                 |
 | [**@nodeops-createos/dsh-createos**](./packages/dsh-createos) | DeepSeek Harness bundle that replaces `ctx.fs` and `ctx.subprocess` together, so Bash, file, LSP, and PTY consumers operate inside one CreateOS sandbox without provider-specific tool forks.                                                               |
+| [**createos.sandbox**](./packages/herdr-plugin)               | Herdr plugin that runs Claude Code, Codex, OpenCode, Pi, or Cursor **inside** a CreateOS Sandbox and attaches its PTY to a Herdr pane. One pane maps to one sandbox, with filtered upload, two-way sync, patch apply back, and Herdr agent detection.        |
 | [**orca-plugin**](./packages/orca-plugin)                     | Orca VM recipe — runs a whole Orca workspace on a disposable microVM instead of your laptop. Pushes your working tree, uncommitted edits included, so no git token reaches the box. Optionally installs Claude Code, Codex, Cursor, OpenCode, or Pi.        |
 
 ## Orca — run a workspace on a sandbox
@@ -291,11 +292,19 @@ createos-claude-plugins/              # marketplace root
 │  │  ├─ src/tools.ts                 # 33 tool definitions
 │  │  ├─ src/util.ts                  # shellQuote, shortId, joinPath
 │  │  └─ README.md
-│  └─ dsh-createos/                  # DeepSeek Harness plugin
-│     ├─ cordis.patch.yml             # DSH bundle patch
-│     ├─ src/createos/                # sandbox owner + managed-process client
-│     ├─ src/fs/                      # CreateOS-backed ctx.fs provider
-│     ├─ src/subprocess/              # CreateOS-backed ctx.subprocess + PTY provider
+│  ├─ dsh-createos/                  # DeepSeek Harness plugin
+│  │  ├─ cordis.patch.yml             # DSH bundle patch
+│  │  ├─ src/createos/                # sandbox owner + managed-process client
+│  │  ├─ src/fs/                      # CreateOS-backed ctx.fs provider
+│  │  ├─ src/subprocess/              # CreateOS-backed ctx.subprocess + PTY provider
+│  │  └─ README.md
+│  └─ herdr-plugin/                  # Herdr plugin (TypeScript, run by bun)
+│     ├─ herdr-plugin.toml            # actions, panes, build step
+│     ├─ build.sh                     # writes run.sh with absolute bun/createos paths
+│     ├─ src/main.ts                  # actions: start, attach, sync, apply, delete …
+│     ├─ src/agents.ts                # the five agent installers
+│     ├─ src/lib.ts                   # herdr + createos + pane state helpers
+│     ├─ test/filter.test.ts          # upload filter tests
 │     └─ README.md
 ├─ apps/                              # (future starter templates)
 ├─ docs/
@@ -317,4 +326,6 @@ Issues and PRs welcome. The Claude Code, Codex, Pi, and OpenCode plugins are thi
 - [Codex plugin README](./packages/codex-plugin/README.md)
 - [OpenCode plugin README](./packages/opencode-plugin/README.md)
 - [DeepSeek Harness plugin README](./packages/dsh-createos/README.md)
+- [Herdr plugin README](./packages/herdr-plugin/README.md)
+- [Herdr plugins](https://herdr.dev/docs/plugins/) — how Herdr plugins work
 - [Orca plugin README](./packages/orca-plugin/README.md)

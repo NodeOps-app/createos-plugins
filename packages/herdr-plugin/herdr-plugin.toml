@@ -1,0 +1,76 @@
+# CreateOS Sandbox plugin for Herdr (https://herdr.dev/docs/plugins).
+#
+# Every command routes through ./run.sh, which build.sh writes with the absolute
+# paths to `bun` and `createos`. Herdr runs plugin commands as a bare argv with
+# no shell expansion, and PATH is unreliable under version managers.
+id = "createos.sandbox"
+name = "CreateOS Sandbox"
+version = "0.1.0"
+min_herdr_version = "0.7.5"
+description = "Run one coding-agent CLI per CreateOS Sandbox microVM, one sandbox per Herdr pane."
+platforms = ["linux", "macos"]
+
+[[build]]
+command = ["sh", "build.sh"]
+
+[[actions]]
+id = "start"
+title = "CreateOS: start agent in a new sandbox"
+description = "Create a sandbox, upload the focused Git worktree, install the configured agent, and open it in a new pane."
+contexts = ["workspace", "pane"]
+command = ["sh", "run.sh", "start"]
+
+[[actions]]
+id = "attach"
+title = "CreateOS: reattach agent to this pane"
+description = "Resume the mapped sandbox if paused and reattach the agent session to the focused pane."
+contexts = ["pane"]
+command = ["sh", "run.sh", "attach"]
+
+[[actions]]
+id = "sync"
+title = "CreateOS: two-way file sync"
+description = "Open a pane that mirrors the local worktree with the sandbox workspace until you stop it."
+contexts = ["pane"]
+command = ["sh", "run.sh", "sync"]
+
+[[actions]]
+id = "apply"
+title = "CreateOS: apply sandbox changes locally"
+description = "Export a Git patch from the sandbox and apply it locally after git apply --check passes."
+contexts = ["pane"]
+command = ["sh", "run.sh", "apply"]
+
+[[actions]]
+id = "pause"
+title = "CreateOS: pause this sandbox"
+description = "Snapshot the sandbox. The filesystem and the agent session survive."
+contexts = ["pane"]
+command = ["sh", "run.sh", "pause"]
+
+[[actions]]
+id = "resume"
+title = "CreateOS: resume this sandbox"
+description = "Bring the paused sandbox back to life."
+contexts = ["pane"]
+command = ["sh", "run.sh", "resume"]
+
+[[actions]]
+id = "info"
+title = "CreateOS: show sandbox mapping"
+description = "Print the agent, sandbox name, status, and paths mapped to the focused pane."
+contexts = ["pane"]
+command = ["sh", "run.sh", "info"]
+
+[[actions]]
+id = "delete"
+title = "CreateOS: delete this sandbox"
+description = "Permanently delete the mapped sandbox. Invoke twice within 60 seconds to confirm."
+contexts = ["pane"]
+command = ["sh", "run.sh", "delete"]
+
+[[panes]]
+id = "boxes"
+title = "CreateOS sandboxes"
+placement = "overlay"
+command = ["sh", "run.sh", "boxes"]
