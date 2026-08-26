@@ -79,9 +79,11 @@ export function boxExec(
   script: string,
   opts: { stream?: boolean; params?: string[] } = {},
 ): string {
-  const args = ["sandbox", "exec", box];
+  // Flags go before the sandbox name. The CLI stops parsing flags at the first
+  // positional argument and discards the rest without an error.
+  const args = ["sandbox", "exec"];
   if (opts.stream) args.push("--stream");
-  args.push("--", "bash", "-lc", script, "herdr-plugin", ...(opts.params ?? []));
+  args.push(box, "--", "bash", "-lc", script, "herdr-plugin", ...(opts.params ?? []));
   return cos(args, opts.stream ?? false);
 }
 
