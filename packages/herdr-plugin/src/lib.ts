@@ -161,6 +161,83 @@ export function writeEntry(pane: string, entry: Entry | null): void {
   });
 }
 
+/**
+ * A start that has begun but has not yet written its mapping.
+ *
+ * Provisioning takes about 20 seconds, and the mapping only appears at the end
+ * of it. Without this reservation a second key press during that window starts
+ * a second provision and bills a second sandbox. It is keyed by the pane the
+ * user pressed the key in, because that is what a retry repeats.
+ */
+export type Pending = { pane?: string; box: string; startedAt: number };
+
+/** A start that never finished must not block the pane for good. */
+const PENDING_TTL_MS = 5 * 60_000;
+
+const pendingFile = (): string => join(stateFile(), "..", "pending.json");
+
+function readPending(): Record<string, Pending> {
+  const file = pendingFile();
+  if (!existsSync(file)) return {};
+  try {
+    const parsed = JSON.parse(readFileSync(file, "utf8")) as unknown;
+    if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) return {};
+    return parsed as Record<string, Pending>;
+  } catch {
+    // Unlike the mapping, losing this file strands nothing. Reserving again is safe.
+    return {};
+  }
+}
+
+function writePending(all: Record<string, Pending>): void {
+  const file = pendingFile();
+  const temp = `${file}.tmp-${process.pid}`;
+  writeFileSync(temp, `${JSON.stringify(all, null, 2)}\n`);
+  renameSync(temp, file);
+}
+
+/**
+ * Claims `source` for a start, or returns the reservation already holding it.
+ * The check and the claim share one lock, so two presses cannot both win.
+ *
+ * A reservation covers two panes: the one the key was pressed in, and the one
+ * the start opened. `pane split --focus` moves focus onto the new pane, so an
+ * impatient second press arrives from there, not from where the first press
+ * came. Matching only the source pane would let that retry through.
+ */
+export function claimPending(source: string, box: string, now: number): Pending | null {
+  return withLock(() => {
+    const all = readPending();
+    for (const [key, held] of Object.entries(all)) {
+      if (now - held.startedAt >= PENDING_TTL_MS) continue;
+      if (key === source || held.pane === source) return held;
+    }
+    all[source] = { box, startedAt: now };
+    writePending(all);
+    return null;
+  });
+}
+
+/** Records the pane the claim opened, so a retry can name it. */
+export function notePendingPane(source: string, pane: string): void {
+  withLock(() => {
+    const all = readPending();
+    const held = all[source];
+    if (!held) return;
+    held.pane = pane;
+    writePending(all);
+  });
+}
+
+export function releasePending(source: string): void {
+  withLock(() => {
+    const all = readPending();
+    if (!(source in all)) return;
+    delete all[source];
+    writePending(all);
+  });
+}
+
 export function config(): Config {
   const dir = process.env.HERDR_PLUGIN_CONFIG_DIR;
   if (!dir) return {};

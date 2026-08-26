@@ -1,11 +1,13 @@
 #!/usr/bin/env bun
 import { spawnSync } from "node:child_process";
 import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
-import { basename, join } from "node:path";
+import { basename, dirname, join } from "node:path";
 import { tmpdir } from "node:os";
+import { fileURLToPath } from "node:url";
 import { AGENTS, REMOTE_PATH } from "./agents.ts";
 import {
   boxExec,
+  claimPending,
   config,
   cos,
   cosJson,
@@ -14,6 +16,8 @@ import {
   entryFor,
   Fail,
   herdr,
+  notePendingPane,
+  releasePending,
   result,
   run,
   writeEntry,
@@ -23,6 +27,12 @@ import {
 
 const DEFAULT_REMOTE = "/workspace";
 const PATCH = "/tmp/herdr-createos.patch";
+
+/**
+ * Herdr runs a pane command as a bare argv with no shell expansion, so the pane
+ * needs the same absolute entry point that build.sh writes for the manifest.
+ */
+const RUN_SH = join(dirname(fileURLToPath(import.meta.url)), "..", "run.sh");
 
 /** Never upload these, even when Git tracks them. */
 const DENY = [
@@ -238,6 +248,32 @@ function running(entry: Entry): boolean {
   return procs.some((p) => p.process_id === entry.processId && p.state === "running");
 }
 
+/**
+ * What `start` hands to `provision`. One argument, so argument order cannot drift.
+ *
+ * It travels as base64, because `herdr pane run` types its command into the
+ * pane's shell without quoting. Raw JSON is word-split there and loses its
+ * quotes. Base64 uses only A-Za-z0-9+/= and never starts with `=`, so no shell
+ * touches it.
+ */
+type Spec = {
+  /** The pane the key was pressed in. It holds the reservation this must release. */
+  source: string;
+  pane: string;
+  local: string;
+  remote: string;
+  agent: string;
+  name: string;
+  cfg: Config;
+};
+
+/**
+ * The pane is opened before any work begins, and the work then runs inside it.
+ * Provisioning takes around 20 seconds, of which the agent installer alone is
+ * about half. Doing the work first and opening a finished pane last left the
+ * user watching nothing, with no way to tell a slow start from a dead one, so
+ * they pressed the key again and paid for a second sandbox.
+ */
 function start(): void {
   const c = ctx();
   const cfg = config();
@@ -251,45 +287,140 @@ function start(): void {
   const remote = remoteRoot(cfg);
   const name = boxName(local);
 
-  const create = ["sandbox", "create", "--name", name, "--shape", cfg.shape ?? "s-2vcpu-4gb"];
-  if (cfg.rootfs) create.push("--rootfs", cfg.rootfs);
-  create.push("--auto-pause", cfg.autoPause ?? "30m");
-  for (const host of cfg.egress ?? []) create.push("--egress", host);
+  // Same reason as Spec: pane commands reach a shell unquoted. Checked before
+  // anything is claimed or created, so a bad path costs nothing.
+  if (/[^A-Za-z0-9._/-]/.test(RUN_SH)) {
+    throw new Fail(
+      `The plugin path contains a character a shell would split on: ${RUN_SH}. Install the plugin under a path made of letters, digits, dot, underscore, dash, and slash.`,
+    );
+  }
+
+  // Claim the source pane before opening anything. The mapping that would
+  // otherwise mark this pane as taken is written about 20 seconds from now, at
+  // the end of provisioning, so without this a second key press bills a second
+  // sandbox. The claim and its check share one lock.
+  const held = claimPending(source, name, Date.now());
+  if (held) {
+    const seconds = Math.round((Date.now() - held.startedAt) / 1000);
+    const where = held.pane ? ` in pane ${held.pane}` : "";
+    throw new Fail(
+      `${held.box} has been provisioning${where} for ${seconds}s. Watch that pane. To run a second agent from here, wait for it to finish.`,
+    );
+  }
+
+  let pane: string;
+  try {
+    const split = ["pane", "split", "--pane", source, "--direction", "right", "--focus"];
+    if (agent.detect) split.push("--env", `HERDR_AGENT=${agent.detect}`);
+    // provision runs in the pane, not as a Herdr action, so it does not inherit
+    // the plugin directories. Hand them over explicitly.
+    for (const key of ["HERDR_PLUGIN_STATE_DIR", "HERDR_PLUGIN_CONFIG_DIR"]) {
+      const value = process.env[key];
+      if (value) split.push("--env", `${key}=${value}`);
+    }
+    pane = paneIdOf(herdr(split));
+    notePendingPane(source, pane);
+
+    const spec: Spec = { source, pane, local, remote, agent: agentKey, name, cfg };
+    herdr(["pane", "rename", pane, `${agent.title} starting in ${name}`]);
+    const packed = Buffer.from(JSON.stringify(spec), "utf8").toString("base64");
+    herdr(["pane", "run", pane, RUN_SH, "provision", packed]);
+  } catch (error) {
+    // provision never got the claim, so nothing else will ever release it.
+    releasePending(source);
+    throw error;
+  }
+
+  result({ action: "start", ok: true, box: name, pane, agent: agentKey, provisioning: true });
+  process.stdout.write(`Provisioning ${name} in pane ${pane}. Watch that pane for progress.\n`);
+}
+
+const STEPS = 5;
+function step(n: number, message: string): void {
+  process.stdout.write(`\n[${n}/${STEPS}] ${message}\n`);
+}
+
+/** Runs inside the pane it provisions, so every line below is visible live. */
+function provision(): void {
+  const packed = process.argv[3];
+  if (!packed) throw new Fail("provision needs its spec. Herdr starts this, not you.");
+  const spec = JSON.parse(Buffer.from(packed, "base64").toString("utf8")) as Spec;
+  // Release on every exit path below, or one failed start blocks the source
+  // pane until the reservation expires. The handover to the agent sits outside
+  // this block, because process.exit skips finally.
+  let entry: Entry;
+  try {
+    entry = provisionInto(spec);
+  } finally {
+    releasePending(spec.source);
+  }
+
+  // Hand the pane to the agent. This process stays as its parent, so the pane
+  // falls back to a shell when the agent exits.
+  const [cmd, ...args] = attachCommand(entry);
+  const attached = spawnSync(cmd as string, args, { stdio: "inherit" });
+  process.exit(attached.status ?? 0);
+}
+
+function provisionInto(spec: Spec): Entry {
+  const agent = AGENTS[spec.agent];
+  if (!agent) throw new Fail(`Unknown agent "${spec.agent}".`);
+
+  step(1, `Creating sandbox ${spec.name} (${spec.cfg.shape ?? "s-2vcpu-4gb"})...`);
+  const create = [
+    "sandbox",
+    "create",
+    "--name",
+    spec.name,
+    "--shape",
+    spec.cfg.shape ?? "s-2vcpu-4gb",
+  ];
+  if (spec.cfg.rootfs) create.push("--rootfs", spec.cfg.rootfs);
+  create.push("--auto-pause", spec.cfg.autoPause ?? "30m");
+  for (const host of spec.cfg.egress ?? []) create.push("--egress", host);
   const box = cosJson<{ id: string; name: string }>(create);
+  process.stdout.write(`      ${box.id}\n`);
 
   // Everything after creation is billed. A failure here must not strand a
   // sandbox that no mapping records and no action can reach.
-  let uploaded: number;
   let entry: Entry;
-  let pane: string;
   try {
-    uploaded = upload(box.id, local, cfg);
-    prepare(box.id, remote);
-    const bin = install(box.id, agentKey);
-    const processId = launch(box.id, bin, remote);
+    step(2, `Uploading the worktree to ${spec.remote}...`);
+    const uploaded = upload(box.id, spec.local, spec.cfg);
+    process.stdout.write(`      ${uploaded} files\n`);
 
-    const split = ["pane", "split", "--pane", source, "--direction", "right", "--focus"];
-    if (agent.detect) split.push("--env", `HERDR_AGENT=${agent.detect}`);
-    pane = paneIdOf(herdr(split));
-    entry = { box: name, boxId: box.id, agent: agentKey, bin, processId, local, remote };
-    writeEntry(pane, entry);
+    step(3, "Preparing the workspace and its baseline commit...");
+    prepare(box.id, spec.remote);
+
+    step(4, `Installing ${agent.title}. This is the slow part.`);
+    const bin = install(box.id, spec.agent);
+    process.stdout.write(`      ${bin}\n`);
+
+    step(5, `Starting ${agent.title} in ${spec.remote}...`);
+    const processId = launch(box.id, bin, spec.remote);
+    entry = {
+      box: spec.name,
+      boxId: box.id,
+      agent: spec.agent,
+      bin,
+      processId,
+      local: spec.local,
+      remote: spec.remote,
+    };
+    writeEntry(spec.pane, entry);
   } catch (error) {
-    let cleanup = `Deleted the sandbox ${name} (${box.id}).`;
+    let cleanup = `Deleted the sandbox ${spec.name} (${box.id}).`;
     try {
       cos(["sandbox", "rm", "--yes", box.id]);
     } catch {
-      cleanup = `The sandbox ${name} (${box.id}) is still running and is not mapped to any pane. Delete it with: createos sandbox rm --yes ${box.id}`;
+      cleanup = `The sandbox ${spec.name} (${box.id}) is still running and is not mapped to any pane. Delete it with: createos sandbox rm --yes ${box.id}`;
     }
     throw new Fail(`${(error as Error).message}\n${cleanup}`);
   }
 
-  herdr(["pane", "rename", pane, `${agent.title} @ ${name}`]);
-  herdr(["pane", "run", pane, ...attachCommand(entry)]);
-
-  result({ action: "start", ok: true, box: name, boxId: box.id, pane, agent: agentKey, uploaded });
-  process.stdout.write(
-    `${agent.title} is running in ${name} (${uploaded} files uploaded to ${remote}).\n`,
-  );
+  herdr(["pane", "rename", spec.pane, `${agent.title} @ ${spec.name}`]);
+  result({ action: "provision", ok: true, box: spec.name, boxId: box.id, pane: spec.pane });
+  return entry;
 }
 
 function attach(): void {
@@ -445,6 +576,8 @@ function boxes(): never {
 
 const ACTIONS: Record<string, () => void> = {
   start,
+  // Not in the manifest. `start` runs this inside the pane it just opened.
+  provision,
   attach,
   sync,
   apply,
