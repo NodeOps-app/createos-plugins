@@ -1,0 +1,9 @@
+{
+  "schemaVersion": 1,
+  "id": "createos-sandbox",
+  "name": "CreateOS Sandbox",
+  "description": "Firecracker microVM reached over the CreateOS SSH gateway",
+  "checkoutMode": "provisioned-root",
+  "create": "createos sandbox setup orca --recipe",
+  "destroy": "createos sandbox setup orca --recipe"
+}
