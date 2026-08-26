@@ -20,17 +20,15 @@ inside a sandbox and attaches its PTY to a Herdr pane. It is TypeScript run by
 Herdr has no plugin SDK, its CLI is the whole plugin API. Read
 `packages/herdr-plugin/README.md` before touching it.
 
-One more package, `orca-plugin/`, is not an IDE plugin in that sense — it holds
-no skill or tool code. It registers one Orca VM recipe (`orca-plugin.json` +
-`vm-recipe.json`) that runs a whole Orca workspace inside a CreateOS Sandbox, by
-shelling out to `createos setup orca --recipe`. It is not discovered through
-`.claude-plugin/marketplace.json` — that marketplace file is Claude Code-specific
-and does not apply here.
+The Orca integration is **not** in this repository. Orca installs a plugin by
+cloning a whole repository and reading `orca-plugin.json` from its root, so a
+subdirectory here cannot be installed by git URL. It lives at
+[NodeOps-app/createos-orca-plugin](https://github.com/NodeOps-app/createos-orca-plugin);
+`packages/orca-plugin/` keeps only a pointer README.
 
-Orca's git-URL installer clones a whole repository and requires
-`orca-plugin.json` at its root, so this subdirectory cannot be installed that
-way yet. The working route is Settings > Plugins > Dev Paths pointed at
-`packages/orca-plugin`. Read `packages/orca-plugin/README.md` before touching it.
+Do not "fix" this by symlinking a manifest to the root — Orca rejects symlinks
+anywhere in plugin content, and this repository's root already carries symlinks
+for the Pi extension.
 
 Marketplace index is the root `README.md`; each package has its own `README.md`.
 
