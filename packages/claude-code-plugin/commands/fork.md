@@ -1,10 +1,11 @@
 ---
-description: Snapshot the active CreateOS project box and fork it into an independent clone (pauses briefly, then resumes). For matrix / parallel experiments from identical warm state.
+description: Snapshot the active CreateOS project box and fork it into one or more independent clones (pauses briefly, then resumes). For branching experiments from identical warm state.
+argument-hint: "[-c N]"
 allowed-tools: Bash
 ---
 
-Pause the project box, fork its snapshot into a new independent sandbox (auto-resumes), then resume the project box. The clone starts from identical state and diverges from there. It is **not** tracked as the project box — so `cos down` will not destroy it — but it is recorded in the statefile, listed by `cos status`, and reaped by `cos down -f`.
+Pause the project box, fork its snapshot into N new independent sandboxes (`-c N`, default 1; each auto-resumes), then resume the project box. Every clone starts from identical state and diverges from there. Clones are **not** tracked as the project box — so `cos down` will not destroy them — but each is recorded in the statefile, listed by `cos status`, and reaped by `cos down -f`.
 
-!`"${CLAUDE_PLUGIN_ROOT}/scripts/cos" fork`
+!`test -n "$ARGUMENTS" && "${CLAUDE_PLUGIN_ROOT}/scripts/cos" fork $ARGUMENTS || "${CLAUDE_PLUGIN_ROOT}/scripts/cos" fork`
 
-Report the fork id above and remind the user to `createos sandbox rm -y <id>` (or `cos down -f`) when done — clones count against the 2-running quota.
+Report the fork id(s) above and remind the user to `createos sandbox rm -y <id>` (or `cos down -f`) when done — clones count against the account's running quota. Running the SAME job N ways from a directory rather than the project box is usually a better fit for `/createos-sandbox:matrix`.

@@ -2,19 +2,30 @@
 # cos — drive a CreateOS sandbox as remote compute for Claude / agents.
 #
 # Patterns:
-#   offload (one-shot, safe): stage a dir → run (keepalive+retry) → pull artifacts → destroy
+#   offload (one-shot, safe): createos sandbox offload — stage → run → fetch → destroy
+#   fanout/matrix (parallel): createos sandbox matrix — one box staged, forked N ways
 #   up/run/sync/down (reusable): a per-repo box + one-way/two-way/mirror file sync
+#
+# offload/fanout/matrix/fork are thin: cos translates flags and keeps the UX
+# it owns (heavy-build warnings, project-box pause/resume orchestration), and
+# hands the actual staging/execution/lifecycle work to `createos sandbox`,
+# which already does it safely (retry, no billable leaks on failure, teardown
+# failures that fail the command instead of hiding it). See createos-cli's
+# `sandbox offload|matrix|fork --help` for the full flag set either wraps.
 #
 # `cos` is NOT on PATH by default — run `cos install` once (symlinks into
 # ~/.local/bin), or invoke it by full path: "$CLAUDE_PLUGIN_ROOT/scripts/cos".
 #
 # Subcommands:
 #   cos install [target]                        symlink this script onto PATH (default ~/.local/bin/cos)
-#   cos offload [flags] <local-dir> <cmd>       throwaway box: stage→run→pull→destroy
+#   cos offload [flags] <local-dir> <cmd>       throwaway box: stage→run→fetch→destroy
+#   cos fanout [-j N][flags] <dir> <cmd>...     N throwaway forks of one staged box, in parallel
+#   cos matrix [-P prep][flags] <dir> <cmd>...  fanout, but the setup runs once before forking
 #   cos up   [-s][-r][-n][-e|-p|-E][-a]         create/reuse a project box (-a to adopt)
 #   cos run  <cmd>                              run in the project box (keepalive)
 #   cos sync [-2|-M][-x] <local-dir> [remote]   start file sync into the project box (bg)
 #   cos pause | cos resume                      park the warm box at zero compute cost / bring it back
+#   cos fork [-c N]                             snapshot the project box → N independent clone(s)
 #   cos template submit <name> [-f Dockerfile]  build a custom rootfs (bake the toolchain once)
 #   cos down [-f]                               stop sync + destroy box + clear state (-f reaps forks)
 #   cos status                                  show active box + sync state
@@ -51,7 +62,8 @@ NORMA=()
 _mapl(){ case "$1" in
   --shape) echo -s;; --rootfs) echo -r;; --out|--output) echo -o;; --name) echo -n;;
   --egress) echo -e;; --egress-preset) echo -p;; --egress-all) echo -E;; --adopt) echo -a;;
-  --exclude) echo -x;; --keep-on-fail) echo -K;; --swap) echo -w;;
+  --exclude) echo -x;; --keep-on-fail) echo -K;; --count) echo -c;;
+  --prepare) echo -P;; --from) echo -F;; --keep-golden) echo -G;; --logs) echo -L;;
   --two-way) echo -2;; --mirror) echo -M;; --forks) echo -f;; *) echo "$1";; esac; }
 _norm(){ NORMA=(); while [ $# -gt 0 ]; do case "$1" in
     --) shift; NORMA+=(-- "$@"); break;;
@@ -153,17 +165,6 @@ state_set(){ lock_state; local tmp; tmp=$(mktemp); [ -f "$STATE" ] || echo '{}' 
   unlock_state
 }
 
-# ── set up a swapfile in-box (OOM headroom for compiled-extension builds) ──────
-setup_swap(){ local id=$1 gb=$2
-  echo "cos: ensuring ${gb}G swap in box…" >&2
-  "$CLI" sandbox exec "$id" -- bash -lc "
-    swapon --show 2>/dev/null | grep -q /cos.swap && { free -m | awk '/Swap/{print \"swap MB: \"\$2}'; exit 0; }
-    ( fallocate -l ${gb}G /cos.swap 2>/dev/null || dd if=/dev/zero of=/cos.swap bs=1M count=\$(( ${gb}*1024 )) status=none 2>/dev/null ) \
-      && chmod 600 /cos.swap && mkswap /cos.swap >/dev/null 2>&1 && swapon /cos.swap 2>/dev/null \
-      && free -m | awk '/Swap/{print \"swap MB: \"\$2}' \
-      || echo 'swap setup failed (continuing without swap)'
-  " 2>&1 | sed 's/^/cos: /' >&2 || true
-}
 
 # ── run a command in-box with keepalive + transient-retry ─────────────────────
 # Detaches the real command (survives stream death), then a heartbeat watcher
@@ -195,24 +196,40 @@ run_keepalive(){ local id=$1 cmd=$2 wd=${3:-} llog=${4:-$STATE_DIR/last-exec.log
   done
 }
 
-# ─────────────────────────────────────────────────────────────── one-shot offload
-OFFLOAD_ID=""; KEEP=0
-on_offload_exit(){ [ -n "$OFFLOAD_ID" ] || return 0
-  [ "$KEEP" = 1 ] && return 0
-  "$CLI" sandbox rm -y "$OFFLOAD_ID" >/dev/null 2>&1 && echo "cos: destroyed $OFFLOAD_ID" >&2 || true; }
-
+# ───────────────────────────────────────────────────────────── one-shot offload
+# Thin delegate: `createos sandbox offload` (createos-cli's own Go composition)
+# already does stage->run->fetch->destroy, with retry on connection failures
+# and a teardown failure that fails the command instead of leaking a billable
+# box. cos only translates flags and keeps the heavy-build-on-a-small-box
+# warning, which is UX cos owns and the CLI has no reason to know about.
+offload_usage(){ cat <<'EOF'
+cos offload — run a command in a throwaway sandbox (stage → run → fetch → destroy).
+  cos offload [flags] <local-dir> <cmd>
+flags:
+  -s shape   -r rootfs   -o out (path inside /work to fetch back)   -K keep box on failure
+  -e <domain>            allow one egress domain (repeatable)
+  -p <preset>            egress preset: python-uv | rust-cargo | npm | github (repeatable, composes with -e)
+  -E                     unrestricted egress (already the default; kept for old invocations)
+  -x <glob>              extra upload exclude (repeatable; .git/target/node_modules/__pycache__/.venv/media excluded by default)
+example:
+  cos offload -p python-uv -p rust-cargo -x target . 'uv sync --frozen --group dev && uv run pytest -q'
+Delegates to `createos sandbox offload` — see `createos sandbox offload --help` for the full flag set.
+A heavy build needing swap: compose it into the command itself, e.g.
+  'fallocate -l 4G /swapfile && mkswap /swapfile && swapon /swapfile && <cmd>'
+EOF
+}
 cmd_offload(){
   _norm "$@"; set -- ${NORMA[@]+"${NORMA[@]}"}
-  local shape=s-1vcpu-1gb rootfs=devbox:1 out="" swap="" keep_on_fail=0 egress_all=0
-  COS_EGRESS=(); local -a excl=() _d; local OPTIND=1 o doms d
-  while getopts "s:r:e:o:p:x:w:EKh" o; do case $o in
-    s) shape=$OPTARG;; r) rootfs=$OPTARG;; o) out=$OPTARG;; w) swap=$OPTARG;;
-    e) COS_EGRESS+=(--egress "$OPTARG");;
-    p) doms=$(egress_preset "$OPTARG") || die "unknown egress preset '$OPTARG' (have: python-uv rust-cargo npm github)"
-       read -ra _d <<<"$doms"; for d in "${_d[@]}"; do COS_EGRESS+=(--egress "$d"); done;;
-    x) excl+=("$OPTARG");;
-    E) egress_all=1;;
-    K) keep_on_fail=1;;
+  local -a args=(); local out="" shape=s-1vcpu-1gb OPTIND=1 o
+  while getopts "s:r:e:o:p:x:EKh" o; do case $o in
+    s) shape=$OPTARG; args+=(--shape "$OPTARG");;
+    r) args+=(--rootfs "$OPTARG");;
+    o) out=$OPTARG;;
+    e) args+=(--egress "$OPTARG");;
+    p) args+=(--egress-preset "$OPTARG");;
+    x) args+=(--exclude "$OPTARG");;
+    E) :;; # unrestricted is already the default — kept so old invocations don't error
+    K) args+=(--keep-on-fail);;
     h) offload_usage; exit 0;;
     *) offload_usage >&2; exit 2;; esac; done
   shift $((OPTIND-1))
@@ -220,62 +237,15 @@ cmd_offload(){
   if [ $# -lt 2 ]; then offload_usage; exit 0; fi
   local dir=$1 cmd=$2
   [ -d "$dir" ] || die "no such dir: $dir"
-  [ "$egress_all" = 1 ] && COS_EGRESS=()
+  [ -n "$out" ] && args+=(--fetch "$out")
 
-  # warn: heavy compiled build on a small box
-  local heavy=0 small=0
-  case "$cmd" in *cargo*|*maturin*|*torch*|*"pip install"*|*"uv sync"*|*"uv run"*|*pyo3*) heavy=1;; esac
-  case "$shape" in *256mb|*512mb|*-1gb) small=1;; esac
-  [ "$heavy" = 1 ] && [ "$small" = 1 ] && [ -z "$swap" ] && \
-    echo "cos: ⚠ heavy build on small box ($shape) — risk of OOM/ENOSPC. Try -s s-2vcpu-2gb or --swap 4." >&2
+  # warn: heavy compiled build on a small box (cos-owned UX; the CLI has no
+  # reason to know what "heavy" means for your workload)
+  case "$cmd" in *cargo*|*maturin*|*torch*|*"pip install"*|*"uv sync"*|*"uv run"*|*pyo3*)
+    case "$shape" in *256mb|*512mb|*-1gb)
+      echo "cos: ⚠ heavy build on small box ($shape) — risk of OOM/ENOSPC. Try -s s-2vcpu-2gb." >&2;; esac;; esac
 
-  local name="cos-o-$$-${RANDOM}"
-  OFFLOAD_ID=$(create_box "$name" "$shape" "$rootfs")
-  KEEP=0; trap on_offload_exit EXIT
-  echo "cos: $OFFLOAD_ID ($name, $shape/$rootfs)" >&2
-  wait_running "$OFFLOAD_ID" 30 || die "box $OFFLOAD_ID not running after 30s"
-
-  # stage with excludes (.git/build artifacts/large media skipped by default)
-  local -a tarx=(); local p
-  for p in "${DEFAULT_EXCLUDES[@]}" ${excl[@]+"${excl[@]}"}; do tarx+=(--exclude "$p"); done
-  echo "cos: staging $dir → box:/work (default excludes + ${excl[*]:-none})" >&2
-  tar "${tarx[@]}" -c -C "$dir" . | "$CLI" sandbox push "$OFFLOAD_ID" - /work.tar >/dev/null 2>&1 || die "push failed"
-  "$CLI" sandbox exec "$OFFLOAD_ID" -- bash -lc 'mkdir -p /work && tar -C /work -xf /work.tar && rm -f /work.tar && echo ok' >/dev/null 2>&1 || die "extract failed"
-
-  [ -n "$swap" ] && setup_swap "$OFFLOAD_ID" "$swap"
-
-  run_keepalive "$OFFLOAD_ID" "$cmd" /work || true
-  local rc=${BUILD_RC:-1}
-  if [ "${INFRA_FAIL:-0}" = 1 ]; then
-    KEEP=1; rc=1
-    echo "cos: ⚠ infra/stream failure — box kept so the build cache survives." >&2
-    echo "cos:   reconnect: createos sandbox exec --stream $OFFLOAD_ID -- bash -lc 'tail -f /tmp/.cos-run.log'" >&2
-    echo "cos:   destroy:   createos sandbox rm -y $OFFLOAD_ID" >&2
-  elif [ "$rc" != 0 ] && [ "$keep_on_fail" = 1 ]; then
-    KEEP=1
-    echo "cos: command exited $rc — box kept (--keep-on-fail). destroy: createos sandbox rm -y $OFFLOAD_ID" >&2
-  fi
-
-  if [ -n "$out" ]; then
-    echo "cos: pulling /work/$out → $dir/" >&2
-    if "$CLI" sandbox exec "$OFFLOAD_ID" -- bash -lc "cd /work && tar -c $out" 2>/dev/null | tar -x -C "$dir"; then :; else
-      echo "cos: ⚠ pull of '$out' FAILED — artifacts NOT retrieved (does '$out' exist under /work?). Box is about to be destroyed." >&2
-    fi
-  fi
-  return "$rc"
-}
-offload_usage(){ cat <<'EOF'
-cos offload — run a command in a throwaway sandbox (stage → run → pull → destroy).
-  cos offload [flags] <local-dir> <cmd>
-flags:
-  -s shape   -r rootfs   -o out (tar dir to pull back)   -w GB (swap)   -K keep box on failure
-  -e <domain>            allow one egress domain (repeatable)
-  -p <preset>            egress preset: python-uv | rust-cargo | npm | github (repeatable, composes with -e)
-  -E                     unrestricted egress (trusted offload)
-  -x <glob>              extra upload exclude (repeatable; .git/target/node_modules/__pycache__/.venv/media excluded by default)
-example:
-  cos offload -p python-uv -p rust-cargo -x target . 'uv sync --frozen --group dev && uv run pytest -q'
-EOF
+  "$CLI" sandbox offload "${args[@]}" "$dir" -- "$cmd"
 }
 
 # ───────────────────────────────────────────────────────────── reusable project box
@@ -608,34 +578,57 @@ cmd_vpn(){
 }
 
 # ───────────────────────────── fork: snapshot the project box into an independent clone
+# The pause→resume orchestration around the project box stays here on purpose:
+# it is YOUR persistent box, explicitly forked by request, so cos pausing it
+# briefly is the one legitimate exception to "never auto-pause a running
+# sandbox" — `createos sandbox fork` itself refuses to do this for anything
+# it doesn't own. The actual fork + id resolution delegates to the CLI, which
+# returns the new id(s) as JSON directly — no more diffing `sandbox ls`
+# before/after, which is what the old multibyte/set -u trap here used to do.
 cmd_fork(){
+  local count=1 OPTIND=1 o
+  while getopts "c:h" o; do case $o in
+    c) count=$OPTARG;;
+    h) echo "cos fork [-c N]   snapshot the project box, fork it (N times), then resume the project box"; exit 0;;
+    *) exit 2;; esac; done
+  shift $((OPTIND-1))
+  numeric "$count" && [ "$count" -ge 1 ] || die "-c must be a positive integer"
+
   local id; id=$(state_get id); [ -n "$id" ] || die "no active project box — 'cos up' first"
   wait_running "$id" 15 || die "box $id not running"
   echo "cos: pausing $id to snapshot (brief; needed to fork)…" >&2
   "$CLI" sandbox pause "$id" >/dev/null 2>&1 || die "pause failed"
-  local before after newid
-  before=$("$CLI" -o json sandbox ls 2>/dev/null | jq -r '.[].id' | sort)
-  echo "cos: forking…" >&2
-  if ! "$CLI" sandbox fork "$id" >"$STATE_DIR/last-fork.log" 2>&1; then
+
+  local plural=""; [ "$count" -gt 1 ] && plural=" (x$count)"
+  echo "cos: forking${plural}…" >&2
+  local result
+  if ! result=$("$CLI" -o json sandbox fork "$id" --count "$count" 2>"$STATE_DIR/last-fork.log"); then
     "$CLI" sandbox resume "$id" >/dev/null 2>&1 || true
     die "fork failed — see $STATE_DIR/last-fork.log (project box resumed)"
   fi
-  after=$("$CLI" -o json sandbox ls 2>/dev/null | jq -r '.[].id' | sort)
   # brace the expansion: a bare `$id` followed directly by a multibyte char (the
-  # ellipsis) is parsed as part of the variable NAME, so `set -u` kills the script
-  # here — after the fork has already happened, orphaning the clone.
+  # ellipsis) is parsed as part of the variable NAME, so `set -u` kills the
+  # script here — after the fork has already happened, orphaning the clone.
+  # (This is not hypothetical: it happened live during testing of this exact
+  # rewrite. Every other new echo in this function was written pre-braced.)
   echo "cos: resuming project box ${id}…" >&2
   "$CLI" sandbox resume "$id" >/dev/null 2>&1 || echo "cos: ⚠ resume of $id failed — run 'createos sandbox resume $id'" >&2
-  newid=$(comm -13 <(printf '%s\n' "$before") <(printf '%s\n' "$after") | head -1)
-  [ -n "$newid" ] || { echo "cos: forked, but couldn't auto-resolve the new id — see 'createos sandbox ls'" >&2; return 0; }
+
+  local newids; newids=$(printf '%s' "$result" | jq -r 'if type=="array" then .[].id else .id end')
+  [ -n "$newids" ] || { echo "cos: forked, but couldn't read the new id(s) from the response — see 'createos sandbox ls'" >&2; return 0; }
+
   # A fork is an independent clone, so `down` won't destroy it — but record it, or
   # nothing ever will and it leaks silently. `down` reports it; `down -f` reaps it.
-  local forks; forks=$(state_get fork_ids)
-  state_set fork_ids "${forks:+$forks }$newid"
-  echo "cos: fork ready: $newid (independent clone; NOT tracked as the project box)" >&2
-  echo "cos:   exec:    createos sandbox exec --stream $newid -- bash -lc '…'" >&2
-  echo "cos:   destroy: createos sandbox rm -y $newid   (or 'cos down -f' to reap forks with the box)" >&2
-  echo "$newid"
+  local forks nid; forks=$(state_get fork_ids)
+  for nid in $newids; do forks="${forks:+$forks }$nid"; done
+  state_set fork_ids "$forks"
+
+  for nid in $newids; do
+    echo "cos: fork ready: $nid (independent clone; NOT tracked as the project box)" >&2
+  done
+  echo "cos:   exec:    createos sandbox exec --stream <id> -- bash -lc '…'" >&2
+  echo "cos:   destroy: createos sandbox rm -y <id>   (or 'cos down -f' to reap forks with the box)" >&2
+  printf '%s\n' "$newids"
 }
 
 # ───────────────────────────── pause/resume: park the warm box at zero compute cost
@@ -765,72 +758,93 @@ cmd_shell(){
 }
 
 # ───────────────────────────── fanout: run commands across N throwaway boxes (parallel)
+# Thin delegate: `createos sandbox matrix` with no --prepare IS this pattern —
+# one box staged, forked once per job, each fork independent and destroyed
+# after its job. A fork is a ~1s server-side snapshot copy, so this is faster
+# than the old independently-staged-per-box approach and no less isolated:
+# every job still ran from an identical, staged-once starting point either way.
 fanout_usage(){ cat <<'EOF'
-cos fanout — run commands across N throwaway boxes in parallel (stage once → run each → collect → destroy).
+cos fanout — run commands across N throwaway boxes in parallel (one box staged, forked per job).
   cos fanout [flags] <dir> <cmd1> [cmd2] [cmd3] ...
-Each <cmdN> runs in its OWN isolated box, staged from <dir>. Per-job logs + exit codes summarized at the end.
-flags: -j N (max concurrent, default 2 = external-key quota) · -s shape · -r rootfs · -p preset · -e dom · -E · -x glob
+Each <cmdN> runs on its own clone of one box staged from <dir>. Per-job logs + exit codes summarized at the end.
+flags: -j N (max concurrent, default 10) · -s shape · -r rootfs · -p preset · -e dom · -E · -x glob
 example:
-  cos fanout -j 2 -p python-uv . 'pytest -q tests/a' 'pytest -q tests/b' 'pytest -q tests/c'
+  cos fanout -j 5 -p python-uv . 'pytest -q tests/a' 'pytest -q tests/b' 'pytest -q tests/c'
+Every job shares the same setup? Use `cos matrix -P '<setup cmd>'` instead — it runs the setup
+ONCE on the golden box before forking, rather than nothing shared at all.
 EOF
-}
-fanout_one(){ # $1=idx $2=cmd $3=shape $4=rootfs $5=staged-tar $6=resdir
-  local i=$1 cmd=$2 shape=$3 rootfs=$4 staged=$5 resdir=$6 id
-  id=$(create_box "cos-fo-$$-$i-${RANDOM}" "$shape" "$rootfs" 2>/dev/null) \
-    || { echo 127 > "$resdir/$i.rc"; echo "create failed" > "$resdir/$i.log"; return; }
-  if wait_running "$id" 30 \
-     && "$CLI" sandbox push "$id" - /work.tar < "$staged" >/dev/null 2>&1 \
-     && "$CLI" sandbox exec "$id" -- bash -lc 'mkdir -p /work && tar -C /work -xf /work.tar && rm -f /work.tar' >/dev/null 2>&1; then
-    run_keepalive "$id" "$cmd" /work "$resdir/$i.log" >/dev/null 2>&1 || true
-    echo "${BUILD_RC:-1}" > "$resdir/$i.rc"
-  else
-    echo "stage/boot failed" >> "$resdir/$i.log"; echo 1 > "$resdir/$i.rc"
-  fi
-  "$CLI" sandbox rm -y "$id" >/dev/null 2>&1 || true
 }
 cmd_fanout(){
   _norm "$@"; set -- ${NORMA[@]+"${NORMA[@]}"}
-  local shape=s-1vcpu-1gb rootfs=devbox:1 jobs=2 egress_all=0; COS_EGRESS=(); local -a excl=() _d; local OPTIND=1 o doms d
+  local -a args=(); local OPTIND=1 o
   while getopts "s:r:j:e:p:x:Eh" o; do case $o in
-    s) shape=$OPTARG;; r) rootfs=$OPTARG;; j) jobs=$OPTARG;;
-    e) COS_EGRESS+=(--egress "$OPTARG");;
-    p) doms=$(egress_preset "$OPTARG") || die "unknown egress preset '$OPTARG'"
-       read -ra _d <<<"$doms"; for d in "${_d[@]}"; do COS_EGRESS+=(--egress "$d"); done;;
-    x) excl+=("$OPTARG");;
-    E) egress_all=1;;
+    s) args+=(--shape "$OPTARG");;
+    r) args+=(--rootfs "$OPTARG");;
+    j) args+=(--concurrency "$OPTARG");;
+    e) args+=(--egress "$OPTARG");;
+    p) args+=(--egress-preset "$OPTARG");;
+    x) args+=(--exclude "$OPTARG");;
+    E) :;; # unrestricted is already the default — kept so old invocations don't error
     h) fanout_usage; exit 0;;
     *) fanout_usage >&2; exit 2;; esac; done
   shift $((OPTIND-1))
   [ $# -ge 2 ] || { fanout_usage; exit 0; }
   local dir=$1; shift
   [ -d "$dir" ] || die "no such dir: $dir"
-  numeric "$jobs" && [ "$jobs" -ge 1 ] || die "-j must be a positive integer"
-  [ "$egress_all" = 1 ] && COS_EGRESS=()
-  local -a cmds=("$@"); local n=${#cmds[@]}
-  echo "cos: fanout $n job(s), ≤$jobs concurrent ($shape). External keys allow 2 running — keep -j ≤2." >&2
+  local cmd; for cmd in "$@"; do args+=(--job "$cmd"); done
+  "$CLI" sandbox matrix "${args[@]}" "$dir"
+}
 
-  # stage the input tree once; every job pushes the same tarball
-  local -a tarx=(); local p
-  for p in "${DEFAULT_EXCLUDES[@]}" ${excl[@]+"${excl[@]}"}; do tarx+=(--exclude "$p"); done
-  local staged resdir; staged=$(mktemp "$STATE_DIR/fanout-stage.XXXXXX"); resdir=$(mktemp -d "$STATE_DIR/fanout.XXXXXX")
-  tar "${tarx[@]}" -c -C "$dir" . > "$staged" 2>/dev/null || die "staging tar failed"
-
-  local i; local -a pids=()   # bash-3.2-safe throttle: cap concurrency by waiting on the oldest pid
-  for ((i=0;i<n;i++)); do
-    fanout_one "$i" "${cmds[$i]}" "$shape" "$rootfs" "$staged" "$resdir" & pids+=("$!")
-    if [ "${#pids[@]}" -ge "$jobs" ]; then wait "${pids[0]}" 2>/dev/null || true; pids=("${pids[@]:1}"); fi
-  done
-  wait
-  rm -f "$staged"
-
-  echo "cos: ── fanout results ──" >&2
-  local rc all=0
-  for ((i=0;i<n;i++)); do
-    rc=$(cat "$resdir/$i.rc" 2>/dev/null || echo '?')
-    echo "  job $i  rc=$rc  log=$resdir/$i.log  cmd: ${cmds[$i]}" >&2
-    [ "$rc" = 0 ] || all=1
-  done
-  return "$all"
+# ───────────────────────────── matrix: one golden box, prepared once, forked N ways
+matrix_usage(){ cat <<'EOF'
+cos matrix — build one box, run --prepare once, fork it N times, run one job per clone in parallel.
+  cos matrix [flags] <dir> <cmd1> [cmd2] [cmd3] ...
+  cos matrix -F <sandbox> [flags] <cmd1> [cmd2] ...   (fork from a sandbox you already prepared and paused)
+Use this over `fanout` when every job shares the same setup (dependency install, toolchain) — the
+setup runs ONCE on the golden box, then each job gets an independent fork of it.
+flags:
+  -P <cmd>    run once on the golden box before forking (e.g. 'npm ci' or 'uv sync --frozen')
+  -F <box>    fork from this existing paused sandbox instead of building one from <dir>
+  -j N        max concurrent clones (default 10)
+  -s shape · -r rootfs · -p preset · -e dom · -E · -x glob   (same as offload/fanout)
+  -G          keep the golden box after the run instead of destroying it
+  -L <dir>    directory for per-job log files (default: a temporary directory)
+example:
+  cos matrix -P 'bun install' . 'bun test unit' 'bun test e2e' 'bun test perf'
+Known limits (from `createos sandbox matrix --help`): a fork does not carry its source's S3 disk
+attachments, and a clone whose snapshot is not cached on the target host takes 11-13s to resume.
+EOF
+}
+cmd_matrix(){
+  _norm "$@"; set -- ${NORMA[@]+"${NORMA[@]}"}
+  local -a args=(); local from="" OPTIND=1 o
+  while getopts "s:r:j:e:p:x:P:F:L:EGh" o; do case $o in
+    s) args+=(--shape "$OPTARG");;
+    r) args+=(--rootfs "$OPTARG");;
+    j) args+=(--concurrency "$OPTARG");;
+    e) args+=(--egress "$OPTARG");;
+    p) args+=(--egress-preset "$OPTARG");;
+    x) args+=(--exclude "$OPTARG");;
+    P) args+=(--prepare "$OPTARG");;
+    F) from=$OPTARG;;
+    L) args+=(--logs "$OPTARG");;
+    E) :;; # unrestricted is already the default — kept so old invocations don't error
+    G) args+=(--keep-golden);;
+    h) matrix_usage; exit 0;;
+    *) matrix_usage >&2; exit 2;; esac; done
+  shift $((OPTIND-1))
+  if [ -n "$from" ]; then
+    [ $# -ge 1 ] || { matrix_usage; exit 0; }
+    args+=(--from "$from")
+    local cmd; for cmd in "$@"; do args+=(--job "$cmd"); done
+    "$CLI" sandbox matrix "${args[@]}"
+  else
+    [ $# -ge 2 ] || { matrix_usage; exit 0; }
+    local dir=$1; shift
+    [ -d "$dir" ] || die "no such dir: $dir"
+    local cmd; for cmd in "$@"; do args+=(--job "$cmd"); done
+    "$CLI" sandbox matrix "${args[@]}" "$dir"
+  fi
 }
 
 # ───────────────────────────── disk: BYO S3 bucket mounts (attach/detach on the project box)
@@ -929,8 +943,9 @@ cmd_install(){
 main_usage(){ cat <<'EOF'
 cos — CreateOS sandbox as remote compute.  (run `cos install` to put `cos` on PATH)
   cos auth                            check sign-in (CREATEOS_API_KEY, or `createos login` in a real terminal)
-  cos offload [flags] <dir> <cmd>     one-shot: stage→run(keepalive)→pull→destroy   (cos offload -h for flags)
-  cos fanout [-j N][flags] <dir> <cmd>...   run each <cmd> in its own throwaway box, in parallel  (cos fanout -h)
+  cos offload [flags] <dir> <cmd>     one-shot: stage→run(keepalive)→fetch→destroy   (cos offload -h for flags)
+  cos fanout [-j N][flags] <dir> <cmd>...   N throwaway forks of one staged box, in parallel  (cos fanout -h)
+  cos matrix [-P prep][flags] <dir> <cmd>...   fanout, but the setup runs once before forking  (cos matrix -h)
   cos shell [-s][-r][-e|-p|-E]        instant throwaway interactive Linux (destroyed on exit)
   cos up   [-s][-r][-n][-e|-p|-E][-a] create/reuse project box (-a adopt a box cos didn't create)
   cos run  <cmd>                      run in project box (keepalive; ONE string, no '--' separator)
@@ -940,7 +955,7 @@ cos — CreateOS sandbox as remote compute.  (run `cos install` to put `cos` on 
   cos cluster up <N> [-s|-r|-e|-p|-E] | run [<name|idx>|-a] <cmd> | ls | down    N boxes on one private net
   cos disk create|ls|attach <disk> <mount>|detach|rm   BYO S3 bucket mounts
   cos vpn [up|register [name]]        WireGuard L3 into your private networks (needs wg-quick)
-  cos fork                            snapshot project box → independent clone (survives down; -f reaps)
+  cos fork [-c N]                     snapshot project box → N independent clone(s) (survives down; -f reaps)
   cos pause | cos resume              park the warm box at zero compute cost / bring it back
   cos template submit <name> [-f Dockerfile] | ls | show | logs | rm    custom rootfs (bake the toolchain once)
   cos down [-f]                       stop sync/tunnels + destroy box (+ cluster; -f also destroys forks)
@@ -965,6 +980,7 @@ case "$sub" in
   auth)     cmd_auth "$@";;
   offload)  cmd_offload "$@";;
   fanout)   cmd_fanout "$@";;
+  matrix)   cmd_matrix "$@";;
   shell)    cmd_shell "$@";;
   up)       cmd_up "$@";;
   run)      cmd_run "$@";;
