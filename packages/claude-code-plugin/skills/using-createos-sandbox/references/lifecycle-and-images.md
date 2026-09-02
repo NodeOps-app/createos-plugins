@@ -45,15 +45,17 @@ Raising it is the right move when a box is serving an exposed URL that people wi
 ## fork — branch a warm box
 
 ```bash
-cos fork    # pauses briefly, clones the snapshot, resumes the original
+cos fork          # pauses briefly, clones the snapshot, resumes the original
+cos fork -c 5     # same, but takes 5 independent clones in one call
 ```
 
-The clone is a fully independent box with its own id, IP, and quota ledger. The original is untouched. This is how you try N variants from one prepared state without redoing setup N times.
+Each clone is a fully independent box with its own id, IP, and quota ledger. The original is untouched. This is how you try N variants from one prepared state without redoing setup N times — for running the SAME job N ways in parallel from a directory rather than the project box, `cos matrix` is usually the better fit; see `offload-and-egress.md`.
 
-Two things to know:
+Three things to know:
 
 - A fork is **not** tracked as the project box, so `cos down` leaves it running. It _is_ recorded in the statefile: `cos status` lists forks, `cos down` names the survivors, and `cos down -f` reaps them. Otherwise destroy it yourself with `createos sandbox rm -y <id>`.
-- **Mounted disks do not carry across a fork.** If the source box had an S3 disk attached, re-attach it on the clone.
+- **Mounted disks do not carry across a fork.** If the source box had an S3 disk attached, re-attach it on each clone.
+- **Fork refuses a running sandbox it doesn't own.** `cos fork` pauses the project box itself before forking, because it created that pause-resume cycle on purpose. Forking any OTHER running sandbox directly (`createos sandbox fork <id>`) is refused unless it is already paused — nothing pauses a box you didn't ask it to pause.
 
 ## Images: built-in rootfs and custom templates
 
@@ -125,9 +127,14 @@ curl -sX POST 'http://127.0.0.1:1029/self/pause?reason=idle'
 # or via the FIFO
 echo retire > /run/self    # delete
 echo park   > /run/self    # pause
+
+# createos-cli also wraps these, if the CLI happens to be installed in-guest
+createos sandbox self delete --reason batch-done
 ```
 
-Append this to the end of a long unattended command and the box cleans itself up whether or not anything is still watching.
+Append this to the end of a long unattended command and the box cleans itself up whether or not anything is still watching. Prefer `curl`/the FIFO in a script you might run on any rootfs — they need nothing installed. The CLI wrapper only works if `createos` is actually present in the guest, which a stock `devbox:1` does not ship by default; bake it into a custom template if you want the wrapper form available.
+
+One side effect worth knowing: from `cos run`'s own view — watching over the control-plane connection, not from inside the box — a box that deletes itself looks identical to a dropped stream. `cos` cannot tell "the job finished and the box is gone on purpose" apart from "the box died mid-run," so its output ends abruptly rather than with a clean success line. Check `createos sandbox get <id>` (status `destroyed`) if you need to confirm which one happened.
 
 ## Single-file transfer
 
@@ -147,7 +154,7 @@ Useful for setting expectations, and for not overpromising to the user:
 
 - **Create to first command runs: roughly 200 ms** (median; the guest kernel itself boots in tens of milliseconds, but the round trip through the control plane dominates).
 - **Pause and resume: around 6–8 seconds each, end to end through the CLI** (measured on a 1 GiB box; the platform-side operations are faster, the CLI polls for the state transition). Resume is slower when the snapshot has to move to a different host than it was taken on. **Fork: around a second** for the snapshot copy, plus the pause and resume around it.
-- **Concurrency:** external API keys have been observed to allow 2 boxes running at once, with a daily creation cap. Neither number is published policy — treat them as observed behaviour, budget `cluster` and `fanout` against them, and expect excess jobs to queue rather than fail.
+- **Concurrency:** this account has been observed to allow at least 10 boxes running at once, with a daily creation cap. Neither number is published policy — treat them as observed behaviour, budget `cluster`, `fanout`, and `matrix` against them, and expect excess jobs to queue rather than fail.
 - **Bandwidth:** 5 GiB of box-initiated egress per box by default, topped up additively.
 
 CreateOS Sandbox is in alpha and carries no SLA. Behaviour and limits can change — when a number matters to a decision, check it live rather than quoting this file.

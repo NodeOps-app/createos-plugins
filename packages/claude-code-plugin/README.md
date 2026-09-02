@@ -4,11 +4,11 @@
 
 **Run ad-hoc, heavy, or untrusted code off your machine — from inside Claude Code.**
 
-A [Claude Code](https://docs.claude.com/en/docs/claude-code) plugin that gives Claude a skill + 18 slash commands driving the authed [`createos`](https://createos.sh) CLI. Work runs in disposable [CreateOS](https://createos.sh) Sandboxes — roughly 200 ms from create to your first command — that self-destruct when done.
+A [Claude Code](https://docs.claude.com/en/docs/claude-code) plugin that gives Claude a skill + 19 slash commands driving the authed [`createos`](https://createos.sh) CLI. Work runs in disposable [CreateOS](https://createos.sh) Sandboxes — roughly 200 ms from create to your first command — that self-destruct when done.
 
 [![Claude Code](https://img.shields.io/badge/Claude%20Code-plugin-6E56CF)](https://docs.claude.com/en/docs/claude-code)
 [![CreateOS](https://img.shields.io/badge/CreateOS-Sandboxes-0EA5E9)](https://createos.sh)
-[![Version](https://img.shields.io/badge/version-0.5.0-blue)](./.claude-plugin/plugin.json)
+[![Version](https://img.shields.io/badge/version-0.7.0-blue)](./.claude-plugin/plugin.json)
 
 </div>
 
@@ -24,6 +24,7 @@ A [Claude Code](https://docs.claude.com/en/docs/claude-code) plugin that gives C
 - [Command reference](#command-reference)
   - [Offload — one-shot](#offload--one-shot)
   - [Fanout — parallel boxes](#fanout--parallel-boxes)
+  - [Matrix — shared setup, parallel boxes](#matrix--shared-setup-parallel-boxes)
   - [Shell — throwaway Linux](#shell--throwaway-linux)
   - [Project box — live sessions](#project-box--live-sessions)
   - [Networking](#networking)
@@ -69,7 +70,7 @@ The plugin is a **thin Claude-facing surface** over the `createos` CLI. It ships
 
 | Piece              | Path                                                     | Role                                                                                                        |
 | ------------------ | -------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------- |
-| **Slash commands** | `commands/*.md`                                          | 18 commands (`offload`, `fanout`, `shell`, …), each a thin wrapper that calls `scripts/cos`                 |
+| **Slash commands** | `commands/*.md`                                          | 19 commands (`offload`, `fanout`, `matrix`, `shell`, …), each a thin wrapper that calls `scripts/cos`        |
 | **Skill**          | `skills/using-createos-sandbox/SKILL.md` + `references/` | teaches Claude _when_ to reach for the sandbox on its own, with depth loaded on demand                      |
 | **Hooks**          | `hooks/hooks.json` + `scripts/`                          | `SessionStart` publishes the driver's absolute path; `PreToolUse(Bash)` nudges on heavy build/test commands |
 | **Driver**         | `scripts/cos`                                            | the actual logic — staging, egress, keepalive, sync, networking, lifecycle, state                           |
@@ -123,8 +124,9 @@ claude --plugin-dir /path/to/createos-claude-plugins/packages/claude-code-plugin
 
 | Command                                                                                                   | Summary                                                             |
 | --------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------- |
-| [`offload`](#offload--one-shot) `[flags] <dir> <cmd>`                                                     | one-shot: stage → run (keepalive) → pull → destroy                  |
-| [`fanout`](#fanout--parallel-boxes) `[-j N] [flags] <dir> <cmd1> [cmd2] …`                                | run each command in its own throwaway box, in parallel              |
+| [`offload`](#offload--one-shot) `[flags] <dir> <cmd>`                                                     | one-shot: stage → run (keepalive) → fetch → destroy                 |
+| [`fanout`](#fanout--parallel-boxes) `[-j N] [flags] <dir> <cmd1> [cmd2] …`                                | fork one staged box once per command, run each in parallel          |
+| [`matrix`](#matrix--shared-setup-parallel-boxes) `[-P setup] [-F box] [-j N] [flags] <dir> <cmd1> …`      | fanout, but a setup command runs once before forking                |
 | [`shell`](#shell--throwaway-linux) `[-s] [-r] [-e\|-p\|-E]`                                               | instant throwaway interactive Linux (destroyed on exit)             |
 | [`up`](#project-box--live-sessions) `[-s] [-r] [-n] [-e\|-p\|-E]`                                         | create/reuse the per-repo project box                               |
 | [`run`](#project-box--live-sessions) `<cmd>`                                                              | exec in the project box (streamed, state persists)                  |
@@ -135,28 +137,27 @@ claude --plugin-dir /path/to/createos-claude-plugins/packages/claude-code-plugin
 | [`cluster`](#networking) `up <N> \| run […] <cmd> \| ls \| down`                                          | N boxes on one private network, name-addressable                    |
 | [`disk`](#disks--byo-s3) `create \| ls \| show \| attach \| detach \| rm`                                 | BYO S3 bucket mounts on the project box                             |
 | [`vpn`](#networking) `[register <name> \| up]`                                                            | WireGuard L3 into your private networks                             |
-| [`fork`](#networking)                                                                                     | snapshot the project box → independent clone                        |
+| [`fork`](#networking) `[-c N]`                                                                            | snapshot the project box → N independent clone(s)                   |
 | [`pause`](#pause-resume-and-custom-images) · [`resume`](#pause-resume-and-custom-images)                  | park the warm project box at zero compute cost / restore it exactly |
 | [`template`](#pause-resume-and-custom-images) `submit <name> [-f Dockerfile] \| ls \| show \| logs \| rm` | build a custom rootfs so boxes boot pre-provisioned                 |
 | [`down`](#project-box--live-sessions)                                                                     | stop sync/tunnels + destroy the project box (+ cluster)             |
 | [`status`](#project-box--live-sessions)                                                                   | show active box + sync + tunnels + cluster                          |
 
-> **Flag order:** flags (`-s/-r/-e/-p/-E/-o/-x/-w/-K`) come **before** the positional `<dir> <cmd>`.
+> **Flag order:** flags (`-s/-r/-e/-p/-E/-o/-x/-K`) come **before** the positional `<dir> <cmd>`.
 
 ### Offload — one-shot
 
-The core command. Stages a directory into a fresh box, runs a command, optionally pulls artifacts back, then destroys the box.
+The core command. Stages a directory into a fresh box, runs a command, optionally fetches artifacts back, then destroys the box.
 
 ```
-/createos-sandbox:offload [-p preset] [-e dom] [-E] [-x glob] [-o out] [-w GB] [-K] [-s shape] [-r rootfs] <dir> <cmd>
+/createos-sandbox:offload [-p preset] [-e dom] [-E] [-x glob] [-o out] [-K] [-s shape] [-r rootfs] <dir> <cmd>
 ```
 
 | Flag          | Meaning                                                                                     |
 | ------------- | ------------------------------------------------------------------------------------------- |
 | `-s <shape>`  | box size (default `s-1vcpu-1gb`; see [Shapes](#shapes))                                     |
 | `-r <rootfs>` | root filesystem image (default `devbox:1`)                                                  |
-| `-o <out>`    | tar a box-side dir and pull it back to local                                                |
-| `-w <GB>`     | attempt swap (see caveat under [Heavy builds](#heavy-builds))                               |
+| `-o <out>`    | tar a box-side dir and fetch it back to local                                               |
 | `-K`          | keep the box on a real failure so you can inspect it                                        |
 | `-e <domain>` | allow one egress domain (repeatable)                                                        |
 | `-p <preset>` | egress preset — `python-uv \| rust-cargo \| npm \| github` (repeatable, composes with `-e`) |
@@ -167,26 +168,45 @@ The core command. Stages a directory into a fresh box, runs a command, optionall
 # Run a test suite, pull nothing, box auto-destroys
 /createos-sandbox:offload . "npm ci && npm test"
 
-# Python build with locked egress, pull the dist/ folder back
+# Python build with locked egress, fetch the dist/ folder back
 /createos-sandbox:offload -p python-uv -o dist . "uv sync --frozen && uv run python -m build"
 ```
 
-**Keepalive:** long or quiet compiles no longer die to exec-stream idle resets — the command runs detached with a heartbeat and re-attaches if the stream drops, so the build (and its cache) survives.
+**Keepalive:** long or quiet compiles no longer die to exec-stream idle resets — the command runs detached with a heartbeat and re-attaches if the stream drops, so the build (and its cache) survives. **Swap:** there is no flag for it — compose it into the command itself: `'fallocate -l 4G /swapfile && mkswap /swapfile && swapon /swapfile && <cmd>'`.
 
 ### Fanout — parallel boxes
 
-Run each command in its **own** throwaway box, in parallel, then collect results. Ideal for splitting a test suite or a version matrix.
+Stage `<dir>` once, fork it once per command, run each fork in parallel, then collect results. Ideal for splitting a test suite or a version matrix with no shared setup step.
 
 ```
 /createos-sandbox:fanout [-j N] [-p preset] [-s shape] [-r rootfs] [-e dom] [-E] [-x glob] <dir> <cmd1> [cmd2] …
 ```
 
-- `-j N` — max concurrent boxes (**default 2**, the external-key running-quota). Other flags mirror `offload`.
-- Exit codes are aggregated across boxes; each box is fully isolated from the others.
+- `-j N` — max concurrent forks (**default 10**, matching this account's observed running quota). Other flags mirror `offload`.
+- Exit codes are aggregated across jobs; each fork is fully isolated from the others.
 
 ```bash
-/createos-sandbox:fanout -j 2 -p python-uv . "pytest -q tests/a" "pytest -q tests/b" "pytest -q tests/c"
+/createos-sandbox:fanout -p python-uv . "pytest -q tests/a" "pytest -q tests/b" "pytest -q tests/c"
 ```
+
+### Matrix — shared setup, parallel boxes
+
+`fanout`, plus one thing: `-P '<cmd>'` runs once on the golden box before it forks. Reach for this the moment two or more jobs would otherwise repeat the same install or toolchain prep.
+
+```
+/createos-sandbox:matrix [-P setup] [-F box] [-j N] [-p preset] [-s shape] [-r rootfs] [-e dom] [-E] [-x glob] <dir> <cmd1> [cmd2] …
+```
+
+- `-P '<cmd>'` — run once on the golden box before forking. Paid once, not once per job.
+- `-F <box>` — fork from a sandbox you already prepared and paused yourself, instead of building one from `<dir>`.
+- `-G` — keep the golden box after the run instead of destroying it.
+- `-L <dir>` — directory for per-job log files.
+
+```bash
+/createos-sandbox:matrix -P "npm ci" . "npm test -- --shard 1" "npm test -- --shard 2" "npm test -- --shard 3"
+```
+
+Two known limits, both from `createos sandbox matrix --help`: a fork does not carry the golden box's S3 disk attachments, and a clone whose snapshot isn't cached on the target host can take 11–13 s to resume rather than the usual sub-second.
 
 ### Shell — throwaway Linux
 
@@ -232,9 +252,9 @@ A **reusable, per-repo** box addressed by your working directory. `up` creates i
 | **`tunnel <remote> [local]`**               | Reach a box-side service on your laptop. Run a dev server in the box, then `tunnel 3000` → `http://127.0.0.1:3000`. Private, background, no public URL. Stopped by `down`.                                                                                                                                                                                                                                               |
 | **`expose <port>`**                         | A **public HTTPS** link for a port — `<id>-<port>.app.sb.createos.sh`, stable for the box's lifetime. The service must bind `0.0.0.0`. **Anyone with the link can reach it.** Revoke with `unexpose`.                                                                                                                                                                                                                    |
 | **`unexpose`**                              | Revoke the public URL / disable ingress on the active box.                                                                                                                                                                                                                                                                                                                                                               |
-| **`cluster up <N>`**                        | N boxes on one private network, reaching each other by **fully-qualified** name (`curl http://cos-cl-<key>-2.fc.local:8080` — the bare short name is NXDOMAIN). `cluster run -a '<cmd>'` fans a command across all; `cluster run <name\|idx> '<cmd>'` targets one. `cluster ls` / `cluster down` manage them. For distributed-system / DB-replication / p2p / load-test repros. **Counts against quota — keep N small.** |
+| **`cluster up <N>`**                        | N boxes on one private network, reaching each other by **fully-qualified** name (`curl http://cos-cl-<key>-2.fc.local:8080` — the bare short name is NXDOMAIN). `cluster run -a '<cmd>'` fans a command across all; `cluster run <name\|idx> '<cmd>'` targets one. `cluster ls` / `cluster down` manage them. For distributed-system / DB-replication / p2p / load-test repros. **Counts against the running quota — keep N small.** |
 | **`vpn register <name>`** then **`vpn up`** | Join your laptop to the whole private network over WireGuard (reach every sandbox by name/IP). `vpn up` needs `wg-quick` + `sudo` and **blocks until Ctrl-C** — run it in your own terminal (`!cos vpn up`).                                                                                                                                                                                                             |
-| **`fork`**                                  | Snapshot the warm project box → an independent clone for matrix/parallel experiments. The fork is self-managed.                                                                                                                                                                                                                                                                                                          |
+| **`fork [-c N]`**                           | Snapshot the warm project box → N independent clones (default 1) for branching experiments. Each fork is self-managed. Running the same job N ways from a directory is usually a better fit for `matrix`.                                                                                                                                                                                                              |
 
 ### Pause, resume, and custom images
 
@@ -308,13 +328,13 @@ So a domain allowlist is the right control for "this build should only reach pyp
 - **Egress:** default unrestricted; use `-p`/`-e` to lock it down (see above).
 - **Keepalive:** long/quiet compiles run detached with a heartbeat and survive stream drops. `-K` keeps the box on a real failure for inspection.
 - **Excludes:** `.git`/`target`/`node_modules`/`__pycache__`/`.venv`/media are excluded from the upload by default; `-x <glob>` adds more.
-- **Swap caveat:** `-w <GB>` _attempts_ swap, but `devbox:1` can't `swapon` today — so a torch/maturin build on a small box may OOM/ENOSPC. Install only the extra/group you need (e.g. `uv sync --group dev`) rather than `--all-extras`.
+- **Swap:** no dedicated flag — `devbox:1` can't `swapon` a file added after boot from most shapes anyway, so compose it into the command instead: `'fallocate -l 4G /swapfile && mkswap /swapfile && swapon /swapfile && <cmd>'`. A torch/maturin build on a small box is still more reliably fixed with a bigger shape; install only the extra/group you need (e.g. `uv sync --group dev`) rather than `--all-extras`.
 - **Shape rejection:** a shape your account can't use fails with a clean `Allowed: [...]` list — pick from it.
 - **Bandwidth:** each box starts with a fixed allowance for traffic it initiates (5 GiB by default). A large model download or `docker pull` can exhaust it, after which outbound traffic stops. Top it up additively via `createos sandbox edit <id>`; the exec, file-transfer, and tunnel channels stay reachable regardless.
 
 ## Uploads & excludes
 
-Uploads (`offload`/`fanout`) and one-way `sync` skip big/regenerable dirs by default so you don't ship `node_modules` over the wire:
+Uploads (`offload`/`fanout`/`matrix`) and one-way `sync` skip big/regenerable dirs by default so you don't ship `node_modules` over the wire:
 
 ```
 .git  target  node_modules  __pycache__  .venv  .mypy_cache  .pytest_cache
@@ -355,14 +375,15 @@ cos install                                   # symlink onto PATH (once); create
 cos offload -p python-uv . 'uv sync --frozen --group dev && uv run pytest -q'
 cos offload -p python-uv -p rust-cargo -x target -o dist . 'uv sync --frozen && uv run pytest -q'
 cos up && cos run 'npm ci' && cos sync ~/app /work    # reusable box + one-way sync
-cos fanout -j 2 -p python-uv . 'pytest tests/a' 'pytest tests/b'   # parallel, isolated boxes
+cos fanout -p python-uv . 'pytest tests/a' 'pytest tests/b'        # parallel, isolated forks
+cos matrix -P 'npm ci' . 'npm test -- a' 'npm test -- b'           # shared setup, then fork
 cos shell                                            # instant throwaway Linux (destroyed on exit)
 cos run 'npm run dev &' && cos tunnel 3000           # dev server → http://127.0.0.1:3000
 cos expose 8080                                      # public HTTPS URL for port 8080
 cos cluster up 3 && cos cluster run -a 'hostname'    # 3 boxes, one private net
 cos disk create data --bucket my-b --endpoint https://s3.amazonaws.com --access-key … --secret-key …
 cos disk attach data /mnt/data                       # mount S3 into the project box
-cos fork                                             # snapshot → independent clone
+cos fork -c 2                                        # snapshot → 2 independent clones
 cos template submit myimage -f Dockerfile            # bake a toolchain into a reusable image
 cos pause                                            # park the warm box at zero compute cost
 cos resume                                           # bring it back exactly as it was
@@ -373,7 +394,7 @@ cos down                                             # stops sync/tunnels, destr
 
 - **One-way by default.** `sync` and offload uploads are laptop → box; box-side writes never touch local unless you opt into `-2` (two-way) or pull with `offload -o`. Use `-2` deliberately — never casually on a repo root. `-M` (mirror) additionally **deletes** box-side extras.
 - **Scoped statefile.** `cos` only ever touches boxes it created (`cos-*`) or the project box recorded in its statefile. Your other sandboxes are never touched. State lives at `${COS_STATE_DIR:-${XDG_CACHE_HOME:-~/.cache}/createos-sandbox}/<project>.json` (plus a `.tunnels` sidecar).
-- **Quota.** External keys have been observed to allow 2 boxes running at once, with a daily creation cap. Neither is published policy — treat them as observed behaviour, budget `cluster`/`fanout` against them, and expect excess jobs to queue rather than fail.
+- **Quota.** This account has been observed to allow at least 10 boxes running at once, with a daily creation cap. Neither is published policy — treat them as observed behaviour, budget `cluster`/`fanout`/`matrix` against them, and expect excess jobs to queue rather than fail. Check the live number if a decision depends on it.
 - **Ending a session.** `pause` keeps the box (and its warm state) at zero compute cost; `down` destroys it. Either is fine — leaving a box _running_ is not.
 - **Untrusted code.** Restrict egress (`-p`/`-e`) so a malicious dependency can't exfiltrate or phone home.
 
@@ -399,7 +420,8 @@ cos down                                             # stops sync/tunnels, destr
 - **Template build rejected** — `cos template submit` preflights single-stage/no-`COPY`/64 KiB locally; a rejection past that is usually a base image outside the operator allowlist.
 - **Build can't reach a host** — you restricted egress; add the host with `-e <domain>` or the right `-p <preset>`.
 - **`sync` copied `node_modules` anyway** — your `createos` CLI is old and lacks `--exclude`; upgrade it (`cos` warns when this happens).
-- **Build OOM/ENOSPC on a small box** — bump `-s <shape>`; `-w` swap doesn't work on `devbox:1`. Install only the deps you need.
+- **Build OOM/ENOSPC on a small box** — bump `-s <shape>`; there is no swap flag (`devbox:1` can't `swapon` a file added after boot anyway), so add one inside the command itself if you need it. Install only the deps you need.
+- **`fork -c N` or a `matrix` clone only produced one sandbox** — an old plugin build; the fix (`--count`/forks after the sandbox id being read correctly) shipped in createos-cli's `feat/sandbox-compositions` branch. Confirm with `createos sandbox fork --help` that `--count` is listed, and update the CLI (`createos upgrade`) if it isn't picking up multiple clones.
 - **Public `expose` URL returns nothing** — the service must bind `0.0.0.0`, not `127.0.0.1`.
 
 ---

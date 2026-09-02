@@ -1,6 +1,6 @@
 ---
 name: using-createos-sandbox
-description: Use when you need to run code OFF the user's machine — heavy/long builds or test suites, untrusted or unknown code, a parallel test/config matrix across many boxes, an instant clean Linux to try a tool, a live dev-server/watcher Claude edits against, reaching a box-side service from localhost (port tunnel) or sharing it on the public web (HTTPS preview URL), a multi-machine cluster on one private network, a WireGuard VPN into that network, or mounting an S3 bucket of data. Offloads to ephemeral CreateOS Sandboxes via the `cos` helper (stage → exec → pull → auto-destroy), plus fanout, a scratch shell, and an opt-in reusable box with sync, tunnel, expose, cluster, disk, vpn, pause/resume, custom images, and snapshot/fork.
+description: Use when you need to run code OFF the user's machine — heavy/long builds or test suites, untrusted or unknown code, a parallel test/config matrix across many boxes, an instant clean Linux to try a tool, a live dev-server/watcher Claude edits against, reaching a box-side service from localhost (port tunnel) or sharing it on the public web (HTTPS preview URL), a multi-machine cluster on one private network, a WireGuard VPN into that network, or mounting an S3 bucket of data. Offloads to ephemeral CreateOS Sandboxes via the `cos` helper (stage → exec → fetch → auto-destroy), plus fanout, matrix (shared-setup fan-out), a scratch shell, and an opt-in reusable box with sync, tunnel, expose, cluster, disk, vpn, pause/resume, custom images, and snapshot/fork.
 ---
 
 # Using CreateOS Sandbox as remote compute
@@ -40,7 +40,8 @@ Every `cos` command except `install` and `auth` runs this check first, so an una
 | ---------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------- |
 | **Untrusted / unknown code** — a snippet, a fresh npm/pip package, scraped code, a PoC exploit | Isolation. The blast radius is one disposable box, not the laptop.                 |
 | **Heavy build or test suite** — big `make`, full test run, compile, benchmark                  | Keeps the laptop free; runs on a box sized for it.                                 |
-| **Parallel/matrix work** — same job across N configs, test shards, batch                       | `fanout` — each command in its own throwaway box, concurrently, results collected. |
+| **Parallel work, independent jobs** — N configs, test shards, batch, no shared setup            | `fanout` — each command on its own fork of one staged box, concurrently.           |
+| **Parallel work, shared setup** — same install/toolchain, then N different commands             | `matrix -P '<setup>'` — the setup runs once, then forks once per job.              |
 | **Quick scratch Linux** — try a CLI/tool/snippet on a clean box                                | `shell` — instant keyless box, destroyed on exit (interactive; the user runs it).  |
 | **Clean-room repro** — "works on my machine" bugs, dependency conflicts                        | Fresh rootfs every time, no host state.                                            |
 | **Live dev loop** — dev server / test watcher / REPL that reacts to edits                      | Project box + `sync`; Claude edits locally, the box reacts.                        |
@@ -98,10 +99,20 @@ For the full flag table, the egress presets, the enforcement caveats, fanout, an
 ### Fanout — same input, many boxes, in parallel
 
 ```bash
-cos fanout -j 2 -p python-uv . 'pytest -q tests/unit' 'pytest -q tests/integration' 'ruff check'
+cos fanout -p python-uv . 'pytest -q tests/unit' 'pytest -q tests/integration' 'ruff check'
 ```
 
-Each job gets its own box with no shared network — that is what distinguishes it from `cluster`. `-j` defaults to 2 to match the concurrency external keys have been observed to allow; going higher just queues the extra jobs rather than failing.
+Each job runs on its own fork of one box staged from the directory, with no shared network between jobs — that is what distinguishes it from `cluster`. `-j` defaults to 10, matching this account's observed running concurrency; going higher just queues the extra jobs rather than failing.
+
+### Matrix — same setup, many jobs, in parallel
+
+```bash
+cos matrix -P 'npm ci' . 'npm test -- --shard 1' 'npm test -- --shard 2' 'npm test -- --shard 3'
+```
+
+`fanout` with a shared setup step. `-P '<cmd>'` runs once on the golden box — the dependency install, the toolchain prep — before it forks once per job. Use this the moment two or more jobs would otherwise repeat the same install: the setup cost is paid once instead of once per job. `-F <box>` forks from a sandbox you already prepared and paused yourself, instead of building a new golden box from a directory.
+
+Known limits, both inherited from `createos sandbox matrix --help`: a fork does not carry the golden box's S3 disk attachments (re-attach on each clone, or don't use disks with matrix), and a clone whose snapshot isn't cached on the target host takes 11–13 s to resume rather than the usual sub-second.
 
 ## Pattern B — reusable project box (opt-in)
 
@@ -171,7 +182,7 @@ Disk data lives in the user's own S3 account and region. `--path-style` is neede
 
 - Ephemeral boxes self-destroy. The project box carries a 30-minute idle auto-pause as a backstop, so a forgotten box parks itself instead of billing overnight. Raise it with `createos sandbox edit <id> --auto-pause 4h` when a box is serving an exposed URL people will hit intermittently — otherwise the demo will look dead between visitors.
 - Finish a live session with `cos pause` (keeping the warm state) or `cos down` (done for good). Don't leave a running box behind either way.
-- **Concurrency is limited** — external keys have been observed to allow 2 boxes running at once, with a daily creation cap. This is observed behaviour rather than published policy, so budget `cluster` and `fanout` against it and expect excess jobs to queue rather than fail.
+- **Concurrency is limited** — this account has been observed to allow at least 10 boxes running at once, with a daily creation cap. Neither is published policy, so budget `cluster`, `fanout`, and `matrix` against it and expect excess jobs to queue rather than fail. Check the actual number live if a decision hinges on it — it can change per plan.
 - If a shape is rejected, the error names the allowed list — pick from it, or run `createos sandbox shapes`.
 - Pre-existing boxes the user already runs are **not** yours. `cos` only ever destroys boxes it created itself; a box adopted with `cos up -a` survives `cos down`.
 - CreateOS Sandbox is in alpha with no SLA. When a limit or a number matters to a decision, check it live rather than quoting it from here.
@@ -182,6 +193,6 @@ Load these when the task actually needs the depth — the summaries above are en
 
 | File                                 | Read it for                                                                                                                                                                |
 | ------------------------------------ | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `references/offload-and-egress.md`   | offload flag table, egress presets and how enforcement really behaves, fanout, upload excludes, heavy-build OOM/disk/bandwidth traps                                       |
+| `references/offload-and-egress.md`   | offload flag table, egress presets and how enforcement really behaves, fanout, matrix, upload excludes, heavy-build OOM/disk/bandwidth traps                                |
 | `references/networking.md`           | choosing between tunnel/expose/cluster/vpn, cluster DNS names, expose gotchas, WireGuard setup                                                                             |
 | `references/lifecycle-and-images.md` | pause/resume, auto-pause tuning, fork caveats, built-in rootfs vs custom templates, env vars, remote editor, self-terminating jobs, single-file transfer, measured timings |
