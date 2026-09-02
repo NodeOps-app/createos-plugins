@@ -36,7 +36,7 @@ Heavy builds, flaky test suites, and untrusted code don't belong on your laptop.
 ```bash
 # 1. Add the marketplace + install the plugin
 /plugin marketplace add NodeOps-app/createos-claude-plugins
-/plugin install @createos/claude-code@createos
+/plugin install createos-sandbox@createos
 
 # 2. Offload a heavy test run to a throwaway box (auto-destroys)
 /createos-sandbox:offload . "npm ci && npm test"
@@ -226,7 +226,7 @@ Full reference in [dsh-createos/README.md](./packages/dsh-createos/README.md).
 
 ```
 /plugin marketplace add NodeOps-app/createos-claude-plugins
-/plugin install @createos/claude-code@createos
+/plugin install createos-sandbox@createos
 ```
 
 **From a local checkout:**
@@ -234,7 +234,7 @@ Full reference in [dsh-createos/README.md](./packages/dsh-createos/README.md).
 ```
 git clone https://github.com/NodeOps-app/createos-claude-plugins
 /plugin marketplace add /path/to/createos-claude-plugins
-/plugin install @createos/claude-code@createos
+/plugin install createos-sandbox@createos
 ```
 
 **DeepSeek Harness from a local checkout:**
