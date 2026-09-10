@@ -1,0 +1,19 @@
+Every claim here was verified by installing the plugin with the real
+codex-cli 0.153.4, in an isolated CODEX_HOME and again in a fresh
+CreateOS sandbox (14/14 assertions).
+
+Findings that drove the design:
+- Scoped plugin names are refused outright, so the previously documented
+  install command could never have worked.
+- The hook wire format is identical to Claude Code's, so the previous
+  echo-based hook was silently a no-op.
+- Symlinking the shared driver and skill installs a plugin with NEITHER:
+  the installer copies regular files only, and reports success. Hence
+  real copies plus a CI drift check.
+- manifest.json declared name createos-sandbox, colliding with the Claude
+  Code plugin's id; realigned to createos-sandbox-codex.
+
+Known, not fixed here: both hooks begin 'command -v jq || exit 0', so on a
+host without jq they emit zero bytes and the agent never learns the driver
+path — the ADR-0001 fail-open, reintroduced by a dependency. Affects the
+Claude Code plugin identically.
