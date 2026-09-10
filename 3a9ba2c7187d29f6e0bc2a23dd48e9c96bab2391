@@ -1,0 +1,18 @@
+Verified against live CreateOS, not just unit tests.
+
+Engine e2e (3 real sandboxes): staged dir visible in box, artifact pulled
+back to host, box confirmed destroyed via the API, egress restriction
+applied, real exit code surfaced. 14/14.
+
+Bug found and fixed by that e2e, invisible to unit tests: pullArtifacts
+reported success for a pull that never happened. GNU tar writes a
+well-formed EMPTY archive when asked for a missing path and reports the
+failure only in its exit status, so the receiving tar succeeds and a
+/bin/sh pipeline — whose status is the last command's — exits 0. The box
+holding the only copy of the output was then destroyed. cos was never
+affected (set -euo pipefail); the port lost that property through
+execSync, which defaults to /bin/sh. Fixed at execShell plus an explicit
+existence probe.
+
+Retention and egress are pure functions specifically so they can be
+tested without a sandbox.
