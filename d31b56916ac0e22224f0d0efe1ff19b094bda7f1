@@ -1,0 +1,24 @@
+Session context: cos agent feature.
+
+Research + verification done live against devbox:1 boxes rather than docs.
+Two subagent research passes (codex/opencode, cursor/pi) plus a claude-code
+docs pass; several of their claims were wrong and were corrected by reading
+--help off the shipped binaries and by a stub-server test in-box:
+
+- research claimed cursor-agent has no endpoint flag; it has -e/--endpoint
+  and CURSOR_API_ENDPOINT (but Cursor protocol only, so verdict unchanged)
+- research claimed wire_api=chat removal landed in codex 0.154.0; the
+  shipped 0.153.4 already rejects it
+- research claimed OpenRouter base is api.openroutcodeer.io/v1 with
+  ANTHROPIC_API_KEY; correct is openrouter.ai/api with ANTHROPIC_AUTH_TOKEN
+- research claimed --dangerously-skip-permissions does not exist; it does,
+  and the real blocker is the root guard, fixed with IS_SANDBOX=1
+
+Known open items, not addressed here:
+- packages/codex-plugin/scripts/cos is a byte-identical hand-maintained
+  copy of this driver and has now diverged; needs a sync or a symlink
+- cos auth reports healthy from the presence of a token file without
+  validating it, so an expired token reads as signed in and every
+  subsequent call 401s
+- Integrations/Claude-Code in createos-v2-landing does not mention agent
+  or -v
