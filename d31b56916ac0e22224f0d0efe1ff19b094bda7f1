@@ -9,7 +9,7 @@ docs pass; several of their claims were wrong and were corrected by reading
   and CURSOR_API_ENDPOINT (but Cursor protocol only, so verdict unchanged)
 - research claimed wire_api=chat removal landed in codex 0.154.0; the
   shipped 0.153.4 already rejects it
-- research claimed OpenRouter base is api.openroutcodeer.io/v1 with
+- research claimed the OpenRouter base is api.openrouter.io/v1 paired with
   ANTHROPIC_API_KEY; correct is openrouter.ai/api with ANTHROPIC_AUTH_TOKEN
 - research claimed --dangerously-skip-permissions does not exist; it does,
   and the real blocker is the root guard, fixed with IS_SANDBOX=1
