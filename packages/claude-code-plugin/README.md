@@ -4,11 +4,11 @@
 
 **Run ad-hoc, heavy, or untrusted code off your machine — from inside Claude Code.**
 
-A [Claude Code](https://docs.claude.com/en/docs/claude-code) plugin that gives Claude a skill + 20 slash commands driving the authed [`createos`](https://createos.sh) CLI. Work runs in disposable [CreateOS](https://createos.sh) Sandboxes — roughly 200 ms from create to your first command — that self-destruct when done.
+A [Claude Code](https://docs.claude.com/en/docs/claude-code) plugin that gives Claude a skill + 21 slash commands driving the authed [`createos`](https://createos.sh) CLI. Work runs in disposable [CreateOS](https://createos.sh) Sandboxes — roughly 200 ms from create to your first command — that self-destruct when done.
 
 [![Claude Code](https://img.shields.io/badge/Claude%20Code-plugin-6E56CF)](https://docs.claude.com/en/docs/claude-code)
 [![CreateOS](https://img.shields.io/badge/CreateOS-Sandboxes-0EA5E9)](https://createos.sh)
-[![Version](https://img.shields.io/badge/version-0.5.0-blue)](./.claude-plugin/plugin.json)
+[![Version](https://img.shields.io/badge/version-0.8.0-blue)](./.claude-plugin/plugin.json)
 
 </div>
 
@@ -29,6 +29,7 @@ A [Claude Code](https://docs.claude.com/en/docs/claude-code) plugin that gives C
   - [Networking](#networking)
   - [Pause, resume, and custom images](#pause-resume-and-custom-images)
   - [Disks — BYO S3](#disks--byo-s3)
+  - [Coding agents](#coding-agents)
 - [Egress control](#egress-control)
 - [Heavy builds](#heavy-builds)
 - [Uploads & excludes](#uploads--excludes)
@@ -125,6 +126,7 @@ claude --plugin-dir /path/to/createos-plugin/packages/claude-code-plugin
 | --------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------- |
 | [`offload`](#offload--one-shot) `[flags] <dir> <cmd>`                                                     | one-shot: stage → run (keepalive) → pull → destroy                  |
 | [`fanout`](#fanout--parallel-boxes) `[-j N] [flags] <dir> <cmd1> [cmd2] …`                                | run each command in its own throwaway box, in parallel              |
+| [`agent`](#coding-agents) `[flags] <agent> <dir> <prompt>`                                                 | run claude/codex/opencode/pi/cursor on your code in a box           |
 | [`shell`](#shell--throwaway-linux) `[-s] [-r] [-e\|-p\|-E]`                                               | instant throwaway interactive Linux (destroyed on exit)             |
 | [`up`](#project-box--live-sessions) `[-s] [-r] [-n] [-e\|-p\|-E]`                                         | create/reuse the per-repo project box                               |
 | [`run`](#project-box--live-sessions) `<cmd>`                                                              | exec in the project box (streamed, state persists)                  |
@@ -143,7 +145,7 @@ claude --plugin-dir /path/to/createos-plugin/packages/claude-code-plugin
 | [`down`](#project-box--live-sessions)                                                                     | stop sync/tunnels + destroy the project box (+ cluster)             |
 | [`status`](#project-box--live-sessions)                                                                   | show active box + sync + tunnels + cluster                          |
 
-> **Flag order:** flags (`-s/-r/-e/-p/-E/-o/-x/-w/-K`) come **before** the positional `<dir> <cmd>`.
+> **Flag order:** flags (`-s/-r/-e/-p/-E/-o/-x/-w/-v/-K`) come **before** the positional `<dir> <cmd>`.
 
 ### Offload — one-shot
 
@@ -161,9 +163,10 @@ The core command. Stages a directory into a fresh box, runs a command, optionall
 | `-w <GB>`     | attempt swap (see caveat under [Heavy builds](#heavy-builds))                               |
 | `-K`          | keep the box on a real failure so you can inspect it                                        |
 | `-e <domain>` | allow one egress domain (repeatable)                                                        |
-| `-p <preset>` | egress preset — `python-uv \| rust-cargo \| npm \| github` (repeatable, composes with `-e`) |
+| `-p <preset>` | egress preset — `python-uv \| rust-cargo \| npm \| github \| openrouter \| openai \| anthropic \| cursor` (repeatable, composes with `-e`) |
 | `-E`          | unrestricted egress (trusted offload)                                                       |
 | `-x <glob>`   | extra upload exclude (repeatable)                                                           |
+| `-v KEY[=VAL]`| declare an env var in the box (repeatable). Bare `KEY` forwards the value from your own shell, so a secret stays out of shell history and the Claude transcript |
 
 ```bash
 # Run a test suite, pull nothing, box auto-destroys
@@ -253,7 +256,7 @@ cos computer key ctrl l              # a chord
 cos computer help                    # every op, plus `raw` for the rest of the API
 ```
 
-The two halves compose: the URL lets **you** watch and take over in a browser while Claude acts through `computer`. `desktop:1` also ships the Claude Code, Codex, Pi, OpenCode and Cursor CLIs, so "run an agent on a box and watch its screen" needs no extra setup.
+The two halves compose: the URL lets **you** watch and take over in a browser while Claude acts through `computer`. `desktop:1` ships the same five agent CLIs `devbox:1` does, so "run an agent on a box and watch its screen" needs no extra setup — see [Coding agents](#coding-agents).
 
 | Gotcha                     | Detail                                                                                                                                                                     |
 | -------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
@@ -290,7 +293,7 @@ The two halves compose: the URL lets **you** watch and take over in a browser wh
 /createos-sandbox:up -r myimage          # or: offload -r myimage . "<cmd>"
 ```
 
-A custom image is slow on its **first** boot on each host (that host has to fetch it) and fast on every boot after. The built-ins — `devbox:1`, `ubuntu:26.04`, `debian:13`, `alpine:3.20` — are kept warm and never pull; `createos sandbox rootfs` lists them.
+A custom image is slow on its **first** boot on each host (that host has to fetch it) and fast on every boot after. The built-ins — `devbox:1` (Ubuntu 24.04, batteries included), `ubuntu:26.04`, `debian:13`, `alpine:3.20` — are kept warm and never pull; `createos sandbox rootfs` lists them.
 
 ### Disks — BYO S3
 
@@ -310,6 +313,44 @@ Mount **your own** S3 bucket into the project box.
 /createos-sandbox:disk attach data /mnt/data
 ```
 
+### Coding agents
+
+`devbox:1` ships five agent CLIs, so running one in a box needs no install step:
+
+| CLI | Version seen | Third-party providers |
+| --- | --- | --- |
+| `claude` | 2.1.260 | OpenRouter, Anthropic, any Anthropic-compatible endpoint |
+| `codex` | 0.153.4 | OpenRouter, OpenAI, any **Responses**-compatible endpoint |
+| `opencode` | 1.18.30 | anything — catalog providers or a custom base URL |
+| `pi` | 0.85.1 | anything — built-in providers or a custom base URL |
+| `cursor-agent` | 2026.09.10 | **none** — Cursor's own service only |
+
+`desktop:1` ships the same five.
+
+```
+/createos-sandbox:agent [-P provider] [-m model] [-k KEYVAR] [-o .] [-p preset] [-s shape] <agent> <dir> <prompt>
+```
+
+```bash
+export OPENROUTER_API_KEY=sk-or-...
+/createos-sandbox:agent -m openai/gpt-5.6-luna -o . claude . "fix the failing tests"
+/createos-sandbox:agent -P anthropic -m claude-sonnet-4-5 -p anthropic -o . pi . "add type hints"
+/createos-sandbox:agent -P https://gw.example.com/v1 -k MY_KEY -o . codex . "port this to v2"
+```
+
+It stages the directory, wires the agent to the provider, runs it headless with permission gates off — the microVM is the isolation — pulls the edits back with `-o .`, and destroys the box. `-P` defaults to `openrouter`; `-k` names the host env var holding the key (default `OPENROUTER_API_KEY` / `ANTHROPIC_API_KEY` / `OPENAI_API_KEY` / `CURSOR_API_KEY`). Every `offload` flag works too.
+
+| Gotcha | Detail |
+| ------ | ------ |
+| **`-o .` or it's gone** | Without it the box is destroyed with the agent's edits inside. Run on a clean tree so `git diff` shows what changed. |
+| **Key comes from your shell** | `-v`/`-k` forward the value out of the launching shell. Never paste a provider key into a Claude conversation — it lands in the transcript. |
+| **`openrouter.ai/api` ≠ `/api/v1`** | The first is Anthropic-compatible (what `claude` needs), the second OpenAI-shaped (what `codex` and `opencode` need). Wrong one gives an unhelpful 404. |
+| **codex is Responses-only** | `wire_api = "chat"` is rejected at config load, so a plain Chat-Completions gateway (vLLM, LiteLLM in chat mode) cannot drive it. |
+| **cursor-agent can't be repointed** | Its `--endpoint`/`CURSOR_API_ENDPOINT` expects Cursor's own protocol; BYO-key is an IDE-chat-only feature. |
+| **claude needs `IS_SANDBOX=1`** | The box is root, and `--dangerously-skip-permissions` refuses to run as root without it. `cos agent` sets it. |
+
+Full per-agent env blocks and the wire-protocol matrix live in [`references/coding-agents.md`](./skills/using-createos-sandbox/references/coding-agents.md).
+
 ## Egress control
 
 **By default, egress is unrestricted** — the box can reach any host, and `cos` prints a one-line `⚠ egress UNRESTRICTED` notice. To isolate an untrusted build, **restrict** outbound to an exact set:
@@ -324,6 +365,10 @@ Mount **your own** S3 bucket into the project box.
 | `rust-cargo` | `crates.io`, `static.crates.io`, `index.crates.io`, `static.rust-lang.org`, `cdn.pyke.io`         |
 | `npm`        | `registry.npmjs.org`                                                                              |
 | `github`     | `github.com`, `objects.githubusercontent.com`, `raw.githubusercontent.com`, `codeload.github.com` |
+| `openrouter` | `openrouter.ai`                                                                                   |
+| `openai`     | `api.openai.com`                                                                                  |
+| `anthropic`  | `api.anthropic.com`, `statsig.anthropic.com`                                                      |
+| `cursor`     | the `*.cursor.sh` / `downloads.cursor.com` set Cursor CLI needs                                   |
 
 > `cdn.pyke.io` is included in `rust-cargo` because `ort-sys` (ONNX Runtime) fetches from it. Compose presets and add stragglers with `-e <host>`:
 >

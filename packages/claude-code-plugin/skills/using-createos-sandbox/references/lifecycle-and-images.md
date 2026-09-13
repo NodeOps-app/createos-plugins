@@ -61,7 +61,7 @@ Built-ins are kept warm on the hosts, so they boot with no image pull:
 
 | Rootfs         | Notes                                                                                       |
 | -------------- | ------------------------------------------------------------------------------------------- |
-| `devbox:1`     | Debian, batteries included, the default — has `sshd`, which `sync` and the editor path need |
+| `devbox:1`     | Ubuntu 24.04, batteries included, the default — `sshd` (which `sync` and the editor path need), `asdf`-managed Node/Bun/`uv`, and the **five coding-agent CLIs** (`claude`, `codex`, `opencode`, `pi`, `cursor-agent`) — see `references/coding-agents.md` |
 | `ubuntu:26.04` | plain Ubuntu                                                                                |
 | `debian:13`    | trixie                                                                                      |
 | `alpine:3.20`  | musl + busybox, far smaller; expect glibc-linked binaries and wheels not to work            |
@@ -89,13 +89,15 @@ Resubmitting the same name builds a new version; new boxes pick up the latest on
 
 ## Environment variables
 
-Values a command needs (API keys, tokens, config) have to be declared when the box is created:
+Values a command needs (API keys, tokens, config) have to be declared when the box is created. `cos` takes `-v` on every verb that creates a box — `offload`, `up`, `shell`, `fanout`, `cluster up`:
 
 ```bash
-createos sandbox create --shape s-1vcpu-1gb --env OPENAI_API_KEY=… --env STAGE=dev
+cos offload -v OPENROUTER_API_KEY -v STAGE=dev . './run.sh'
 ```
 
-Per-exec overrides only work for keys that were declared at create time — passing `--env NEW_KEY=…` to `exec` for an undeclared key is rejected. For a one-off value, inline it instead: `bash -c 'TOKEN=… ./run.sh'`.
+**A bare `-v KEY` forwards the value from your own shell**; `-v KEY=VAL` passes a literal. Prefer the bare form for anything secret — the literal form puts the value on a command line, where it lands in `ps` and in the agent transcript. `cos` fails loudly if a bare `-v KEY` is not exported.
+
+Per-exec overrides only work for keys that were declared at create time — passing `--env NEW_KEY=…` to `exec` for an undeclared key is rejected. Declared values reach both login and non-login shells, so `cos run` and `cos offload` commands both see them.
 
 Limits are 64 entries, 4 KiB per value, 64 KiB total.
 
