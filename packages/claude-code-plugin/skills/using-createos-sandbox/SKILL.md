@@ -1,6 +1,6 @@
 ---
 name: using-createos-sandbox
-description: Use when you need to run code OFF the user's machine — heavy/long builds or test suites, untrusted or unknown code, a parallel test/config matrix across many boxes, an instant clean Linux to try a tool, a live dev-server/watcher you edit against, reaching a box-side service from localhost (port tunnel) or sharing it on the public web (HTTPS preview URL), a multi-machine cluster on one private network, a WireGuard VPN into that network, mounting an S3 bucket of data, or work that needs a real screen — a graphical Linux desktop with a browser that you drive by screenshot/click/type and the user can watch over noVNC. Offloads to ephemeral CreateOS Sandboxes via the `cos` helper (stage → exec → pull → auto-destroy), plus fanout, a scratch shell, and an opt-in reusable box with sync, tunnel, expose, desktop/computer-use, cluster, disk, vpn, pause/resume, custom images, and snapshot/fork.
+description: Use when you need to run code OFF the user's machine — heavy/long builds or test suites, untrusted or unknown code, a parallel test/config matrix across many boxes, an instant clean Linux to try a tool, a live dev-server/watcher you edit against, reaching a box-side service from localhost (port tunnel) or sharing it on the public web (HTTPS preview URL), a multi-machine cluster on one private network, a WireGuard VPN into that network, mounting an S3 bucket of data, handing a coding task to another agent (Claude Code, Codex, OpenCode, Pi, Cursor) running on OpenRouter or any OpenAI-/Anthropic-compatible provider, or work that needs a real screen — a graphical Linux desktop with a browser that you drive by screenshot/click/type and the user can watch over noVNC. Offloads to ephemeral CreateOS Sandboxes via the `cos` helper (stage → exec → pull → auto-destroy), plus fanout, a scratch shell, and an opt-in reusable box with sync, tunnel, expose, desktop/computer-use, cluster, disk, vpn, pause/resume, custom images, and snapshot/fork.
 ---
 
 # Using CreateOS Sandbox as remote compute
@@ -50,6 +50,7 @@ Every `cos` command except `install` and `auth` runs this check first, so an una
 | **Same setup, many variants** — try N branches from one prepared box                           | `fork` the project box into independent clones.                                    |
 | **Repeated identical setup** — every offload starts with the same install prelude              | `template` — bake the toolchain into an image once.                                |
 | **Done for now, back tomorrow** — warm box you don't want to rebuild                           | `pause` — snapshot at zero compute cost, `resume` restores it exactly.             |
+| **Hand the work to another coding agent** — second opinion, long refactor, untrusted repo      | `agent` — `claude`/`codex`/`opencode`/`pi`/`cursor` run in a box, on any provider. |
 | **Big data / weights / shared cache**                                                          | `disk` — BYO S3 bucket mounted into the box, survives box death.                   |
 
 Do NOT offload trivial commands, anything needing the user's local secrets/SSH/cloud creds, or work that must touch real local filesystem state.
@@ -171,7 +172,7 @@ cos computer key ctrl l              # a chord
 cos computer help                    # every op, plus `raw` for the rest of the API
 ```
 
-The two halves are independent and useful together: the URL lets the **user** watch and take over in a browser, while `cos computer` lets **you** act. `desktop:1` also ships the Claude Code, Codex, Pi, OpenCode and Cursor CLIs, so "run an agent on a box and let the user watch the screen" needs no extra setup.
+The two halves are independent and useful together: the URL lets the **user** watch and take over in a browser, while `cos computer` lets **you** act. `desktop:1` ships the same five agent CLIs `devbox:1` does, so "run an agent on a box and let the user watch the screen" needs no extra setup — see Pattern E and `references/coding-agents.md` for pointing them at a provider.
 
 Things that will bite you if you skip them:
 
@@ -181,6 +182,28 @@ Things that will bite you if you skip them:
 - **A `409` is ambiguous by design.** fc returns `desktop_unavailable` both while the desktop is still coming up and when an action fails on a perfectly healthy desktop, so never read it as "the box is broken".
 - **The noVNC link is a bearer URL** — anyone holding it can drive the desktop, and the token expires. Say so when handing it over, and don't paste it anywhere it will outlive the box.
 - This is the one place `cos` calls the CreateOS REST API directly, because the `createos` CLI has no computer or desktop command yet. Everything else still goes through the CLI.
+
+## Pattern E — hand the job to another coding agent
+
+`devbox:1` ships five agent CLIs — `claude`, `codex`, `opencode`, `pi`, `cursor-agent` — so "have a different agent do this in a box" needs no install. Each can be pointed at **OpenRouter, an OpenAI-compatible provider, or an Anthropic-compatible one** (with real exceptions, below), so this does not require the user to hold an Anthropic subscription.
+
+```bash
+export OPENROUTER_API_KEY=sk-or-...                            # in the user's own shell
+cos agent -m openai/gpt-5.6-luna -o . claude . 'fix the failing tests'
+cos agent -P anthropic -m claude-sonnet-4-5 -o . pi . 'add type hints'
+cos agent -P https://gw.example.com/v1 -k MY_KEY -o . codex . 'port this to v2'
+```
+
+`cos agent <agent> <dir> <prompt>` stages the directory, wires the agent to the provider, runs it headless with its permission gate off (the microVM is the isolation), and destroys the box. Flags: `-P` provider (default `openrouter`), `-m` model, `-k` the env var holding the key, plus every `offload` flag.
+
+What to get right:
+
+- **`-o .` or the work is lost.** Without it the box is destroyed with the agent's edits inside and you keep only the transcript. Run it on a clean tree so `git diff` shows exactly what changed.
+- **Keys come from the user's shell via `-v`/`-k`, never from the conversation.** Same rule as the CreateOS key — asking them to paste a provider key writes it to the transcript.
+- **Two agents can't be repointed the way you'd assume.** `cursor-agent` runs only on Cursor's own service — no third-party provider path exists. `codex` speaks only the OpenAI **Responses** wire, so a plain Chat-Completions gateway is rejected at config load. `opencode` and `pi` will talk to anything.
+- **An agent box holds an API key**, so `-p openrouter` (or `-p openai` / `-p anthropic`) is worth reaching for, composed with whatever registries the task itself needs: `-p openrouter -p npm`.
+
+The per-agent env blocks, the wire-protocol matrix, and the traps (claude needs `IS_SANDBOX=1` as root; `openrouter.ai/api` vs `/api/v1`) → **`references/coding-agents.md`**.
 
 ## Scratch box and data disks
 
@@ -211,4 +234,5 @@ Load these when the task actually needs the depth — the summaries above are en
 | ------------------------------------ | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | `references/offload-and-egress.md`   | offload flag table, egress presets and how enforcement really behaves, fanout, upload excludes, heavy-build OOM/disk/bandwidth traps                                       |
 | `references/networking.md`           | choosing between tunnel/expose/cluster/vpn, cluster DNS names, expose gotchas, WireGuard setup                                                                             |
+| `references/coding-agents.md`        | the five agent CLIs in `devbox:1`, per-agent provider wiring (OpenRouter / OpenAI-compatible / Anthropic-compatible), which agents can't be repointed, egress around an agent box |
 | `references/lifecycle-and-images.md` | pause/resume, auto-pause tuning, fork caveats, built-in rootfs vs custom templates, env vars, remote editor, self-terminating jobs, single-file transfer, measured timings |

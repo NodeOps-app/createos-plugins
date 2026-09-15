@@ -11,6 +11,7 @@
 # Subcommands:
 #   cos install [target]                        symlink this script onto PATH (default ~/.local/bin/cos)
 #   cos offload [flags] <local-dir> <cmd>       throwaway box: stage→run→pull→destroy
+#   cos agent [flags] <agent> <dir> <prompt>    run claude|codex|opencode|pi|cursor in a box
 #   cos up   [-s][-r][-n][-e|-p|-E][-a]         create/reuse a project box (-a to adopt)
 #   cos run  <cmd>                              run in the project box (keepalive)
 #   cos sync [-2|-M][-x] <local-dir> [remote]   start file sync into the project box (bg)
@@ -50,7 +51,7 @@ strip_ansi(){ perl -pe 's/\e\[[0-9;?]*[ -\/]*[@-~]//g' 2>/dev/null || cat; }
 NORMA=()
 _mapl(){ case "$1" in
   --shape) echo -s;; --rootfs) echo -r;; --out|--output) echo -o;; --name) echo -n;;
-  --egress) echo -e;; --egress-preset) echo -p;; --egress-all) echo -E;; --adopt) echo -a;;
+  --egress) echo -e;; --egress-preset) echo -p;; --egress-all) echo -E;; --env) echo -v;; --adopt) echo -a;;
   --exclude) echo -x;; --keep-on-fail) echo -K;; --swap) echo -w;;
   --two-way) echo -2;; --mirror) echo -M;; --forks) echo -f;; *) echo "$1";; esac; }
 _norm(){ NORMA=(); while [ $# -gt 0 ]; do case "$1" in
@@ -65,7 +66,32 @@ egress_preset(){ case "$1" in
   rust-cargo) echo "crates.io static.crates.io index.crates.io static.rust-lang.org cdn.pyke.io";;
   npm)        echo "registry.npmjs.org";;
   github)     echo "github.com objects.githubusercontent.com raw.githubusercontent.com codeload.github.com";;
+  openrouter) echo "openrouter.ai";;
+  openai)     echo "api.openai.com";;
+  anthropic)  echo "api.anthropic.com statsig.anthropic.com";;
+  cursor)     echo "api2.cursor.sh api5.cursor.sh agent.api5.cursor.sh agentn.api5.cursor.sh repo42.cursor.sh authenticate.cursor.sh authentication.cursor.sh prod.authentication.cursor.sh downloads.cursor.com";;
   *) return 1;; esac; }
+EGRESS_PRESETS="python-uv rust-cargo npm github openrouter openai anthropic cursor"
+
+# ── env passthrough ───────────────────────────────────────────────────────────
+# Values a command needs must be declared at create time — the platform rejects
+# an `exec --env` for a key that wasn't. `-v KEY` forwards the value out of this
+# shell rather than taking it inline, so the secret stays out of shell history
+# and out of the agent transcript. (It is still an argv of the `createos` child,
+# so it is visible to other users on this machine for the life of the create.)
+COS_ENV=()
+add_env(){ local kv=$1
+  case "$kv" in
+    *=*) COS_ENV+=(--env "$kv");;
+    *)   [ -n "${!kv:-}" ] || die "-v $kv: not set in this shell — export it, or pass -v $kv=<value>"
+         COS_ENV+=(--env "$kv=${!kv}");;
+  esac; }
+# declare $1 in the box from the value of host variable $2 (agents disagree on
+# what the key variable is called — claude wants ANTHROPIC_AUTH_TOKEN even when
+# the key is an OpenRouter one)
+add_env_as(){ local name=$1 src=$2
+  [ -n "${!src:-}" ] || die "\$$src is not set in this shell — export it, or name another with -k <VAR>"
+  COS_ENV+=(--env "$name=${!src}"); }
 
 resolve_id(){ "$CLI" -o json sandbox ls 2>/dev/null | jq -r --arg n "$1" '.[]|select(.name==$n).id' | head -1; }
 box_status(){ "$CLI" -o json sandbox ls 2>/dev/null | jq -r --arg i "$1" '.[]|select(.id==$i)|.status'; }
@@ -93,6 +119,7 @@ create_box(){ # $1=name $2=shape $3=rootfs ; extra --egress in COS_EGRESS array
   local args=(sandbox create --name "$name" --shape "$shape" --rootfs "$rootfs" --auto-pause 30m)
   [ -n "${COS_NET:-}" ] && args+=(--network "${COS_NET}")
   [ "${#COS_EGRESS[@]}" -gt 0 ] && args+=("${COS_EGRESS[@]}")
+  [ "${#COS_ENV[@]}" -gt 0 ] && args+=("${COS_ENV[@]}")
   [ "${#COS_EGRESS[@]}" -eq 0 ] && echo "cos: ⚠ egress UNRESTRICTED — box can reach any host (restrict with -p <preset> or -e <domain>)" >&2
   if ! NO_COLOR=1 TERM=dumb "$CLI" "${args[@]}" >"$STATE_DIR/last-create.log" 2>&1; then
     local err; err=$(strip_ansi <"$STATE_DIR/last-create.log" | tr -d '\r' \
@@ -195,6 +222,160 @@ run_keepalive(){ local id=$1 cmd=$2 wd=${3:-} llog=${4:-$STATE_DIR/last-exec.log
   done
 }
 
+# ──────────────────────────────────── run a coding agent inside a throwaway box
+# devbox:1 ships claude, codex, opencode, pi and cursor-agent. Each takes a
+# different route to a third-party model provider — Anthropic wire, Responses
+# wire, a provider catalog, a config file — and the differences are not
+# guessable, so the mapping lives here instead of in five hand-written prompts.
+# All five run with their permission gates off: the microVM *is* the sandbox,
+# which is the case their own bypass flags are documented for.
+agent_usage(){ cat <<'EOF'
+cos agent — run a coding agent in a throwaway sandbox against your code.
+  cos agent [flags] <agent> <local-dir> <prompt>
+agents:
+  claude    Anthropic wire only    (-P openrouter | anthropic | an Anthropic-compatible URL)
+  codex     Responses wire only    (-P openrouter | openai    | a Responses-compatible URL)
+  opencode  any catalog provider   (-P openrouter | anthropic | openai)
+  pi        any catalog provider   (-P openrouter | anthropic | openai)
+  cursor    Cursor's service only  (no third-party provider; needs CURSOR_API_KEY)
+flags:
+  -P <provider>  openrouter (default) | anthropic | openai | https://<base-url>
+  -m <model>     model id as that provider names it (e.g. openai/gpt-5.6-luna)
+  -k <VAR>       host env var holding the key (default: OPENROUTER_API_KEY /
+                 ANTHROPIC_API_KEY / OPENAI_API_KEY / CURSOR_API_KEY)
+  -o <path>      tar this path out of /work afterwards — use `-o .` to get the edits back
+  plus offload flags: -s shape  -r rootfs  -x glob  -v KEY[=VAL]  -e dom  -p preset  -E  -K
+examples:
+  export OPENROUTER_API_KEY=sk-or-...
+  cos agent -m openai/gpt-5.6-luna -o . claude . 'fix the failing tests'
+  cos agent -P anthropic -m claude-sonnet-4-5 -p anthropic -o . pi . 'add type hints'
+EOF
+}
+
+cmd_agent(){
+  _norm "$@"; set -- ${NORMA[@]+"${NORMA[@]}"}
+  local provider=openrouter model="" keyvar=""; local -a fwd=(); local OPTIND=1 o
+  while getopts "P:m:k:s:r:o:x:w:v:e:p:EKh" o; do case $o in
+    P) provider=$OPTARG;; m) model=$OPTARG;; k) keyvar=$OPTARG;;
+    s|r|o|x|w|v|e|p) fwd+=("-$o" "$OPTARG");;
+    E|K) fwd+=("-$o");;
+    h) agent_usage; exit 0;;
+    *) agent_usage >&2; exit 2;; esac; done
+  shift $((OPTIND-1))
+  if [ $# -lt 3 ]; then agent_usage; exit 0; fi
+  local agent=$1 dir=$2 prompt=$3
+  [ -d "$dir" ] || die "no such dir: $dir"
+
+  case "$provider" in
+    openrouter) keyvar=${keyvar:-OPENROUTER_API_KEY};;
+    anthropic)  keyvar=${keyvar:-ANTHROPIC_API_KEY};;
+    openai)     keyvar=${keyvar:-OPENAI_API_KEY};;
+    cursor)     keyvar=${keyvar:-CURSOR_API_KEY};;
+    http://*|https://*) [ -n "$keyvar" ] || die "-P <url> also needs -k <VAR> naming the env var that holds the key";;
+    *) die "unknown provider '$provider' — openrouter | anthropic | openai | cursor | https://<base-url>";;
+  esac
+
+  local q; q=$(printf '%q' "$prompt")
+  local run=""
+  case "$agent" in
+
+  # OpenRouter serves an Anthropic-compatible API at /api (claude appends
+  # /v1/messages itself) and an OpenAI-shaped one at /api/v1. The trailing /v1
+  # is the whole difference between the two and they are not interchangeable.
+  claude)
+    case "$provider" in
+      openrouter) add_env ANTHROPIC_BASE_URL=https://openrouter.ai/api
+                  add_env_as ANTHROPIC_AUTH_TOKEN "$keyvar";;
+      anthropic)  add_env_as ANTHROPIC_API_KEY "$keyvar";;
+      http://*|https://*) add_env "ANTHROPIC_BASE_URL=$provider"
+                  add_env_as ANTHROPIC_AUTH_TOKEN "$keyvar";;
+      *) die "claude speaks the Anthropic Messages wire; '$provider' does not serve it.
+  Use -P openrouter (its /api is Anthropic-compatible), -P anthropic, or a translating proxy URL.";;
+    esac
+    # Every alias has to be pinned, not just ANTHROPIC_MODEL: an unset alias
+    # resolves to a real Anthropic model id the third-party provider has never
+    # heard of, and the run dies on the first subagent or haiku-class call.
+    if [ -n "$model" ]; then
+      add_env "ANTHROPIC_MODEL=$model"
+      add_env "ANTHROPIC_DEFAULT_OPUS_MODEL=$model"
+      add_env "ANTHROPIC_DEFAULT_SONNET_MODEL=$model"
+      add_env "ANTHROPIC_DEFAULT_HAIKU_MODEL=$model"
+      add_env "CLAUDE_CODE_SUBAGENT_MODEL=$model"
+    fi
+    add_env DISABLE_TELEMETRY=1
+    add_env CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC=1
+    # The box runs as root, and claude refuses --dangerously-skip-permissions as
+    # root unless IS_SANDBOX says something else is doing the isolating — which
+    # here is true. `--permission-mode bypassPermissions` hits the same guard.
+    add_env IS_SANDBOX=1
+    run="claude -p --dangerously-skip-permissions $q";;
+
+  # Responses wire only — codex rejects `wire_api = "chat"` at config load, so a
+  # plain Chat-Completions gateway (vLLM, LiteLLM in chat mode) will not work.
+  codex)
+    local cbase
+    case "$provider" in
+      openrouter) cbase=https://openrouter.ai/api/v1;;
+      openai)     cbase=https://api.openai.com/v1;;
+      http://*|https://*) cbase=$provider;;
+      *) die "codex speaks the OpenAI Responses wire; '$provider' does not serve it.
+  Use -P openai, -P openrouter, or a URL whose /responses endpoint is Responses-compatible.";;
+    esac
+    add_env_as "$keyvar" "$keyvar"
+    # -c values are parsed as TOML, so strings need their own inner quotes.
+    # This is the file-free equivalent of a [model_providers.*] config block.
+    run="codex exec --skip-git-repo-check --dangerously-bypass-approvals-and-sandbox"
+    run="$run -c model_provider='\"cos\"'"
+    run="$run -c model_providers.cos.name='\"cos\"'"
+    run="$run -c model_providers.cos.base_url='\"$cbase\"'"
+    run="$run -c model_providers.cos.env_key='\"$keyvar\"'"
+    run="$run -c model_providers.cos.wire_api='\"responses\"'"
+    [ -n "$model" ] && run="$run -m $(printf '%q' "$model")"
+    run="$run $q";;
+
+  # opencode resolves the provider and its key name from its own catalog, so
+  # the bare env var is enough — no config file, no login.
+  opencode)
+    case "$provider" in
+      openrouter|anthropic|openai) :;;
+      *) die "cos does not wire opencode to a custom base URL — that needs a provider block.
+  Set one yourself with OPENCODE_CONFIG_CONTENT (see references/coding-agents.md), or use -P openrouter|anthropic|openai.";;
+    esac
+    add_env_as "$keyvar" "$keyvar"
+    add_env OPENCODE_DISABLE_AUTOUPDATE=1
+    add_env OPENCODE_DISABLE_LSP_DOWNLOAD=1
+    run="opencode run --auto"
+    [ -n "$model" ] && run="$run -m $(printf '%q' "$provider/$model")"   # -m is provider-qualified
+    run="$run $q";;
+
+  pi)
+    case "$provider" in
+      openrouter|anthropic|openai) :;;
+      *) die "cos does not wire pi to a custom base URL — that needs a ~/.pi/agent/models.json provider.
+  Write one yourself (see references/coding-agents.md), or use -P openrouter|anthropic|openai.";;
+    esac
+    add_env_as "$keyvar" "$keyvar"
+    add_env PI_OFFLINE=1          # drops update checks and telemetry; provider call only
+    run="pi -p --provider $provider"
+    [ -n "$model" ] && run="$run --model $(printf '%q' "$model")"
+    run="$run $q";;
+
+  cursor)
+    [ "$provider" = cursor ] || die "cursor-agent runs on Cursor's own service and cannot be pointed at '$provider'.
+  Its --endpoint/CURSOR_API_ENDPOINT expects Cursor's own API protocol, not an OpenAI- or Anthropic-compatible one.
+  Use -P cursor with CURSOR_API_KEY, or pick another agent."
+    add_env_as CURSOR_API_KEY "$keyvar"
+    run="cursor-agent -p --force"
+    [ -n "$model" ] && run="$run --model $(printf '%q' "$model")"
+    run="$run $q";;
+
+  *) die "unknown agent '$agent' — claude | codex | opencode | pi | cursor";;
+  esac
+
+  echo "cos: agent=$agent provider=$provider model=${model:-<agent default>} key=\$$keyvar" >&2
+  cmd_offload ${fwd[@]+"${fwd[@]}"} "$dir" "$run"
+}
+
 # ─────────────────────────────────────────────────────────────── one-shot offload
 OFFLOAD_ID=""; KEEP=0
 on_offload_exit(){ [ -n "$OFFLOAD_ID" ] || return 0
@@ -205,10 +386,11 @@ cmd_offload(){
   _norm "$@"; set -- ${NORMA[@]+"${NORMA[@]}"}
   local shape=s-1vcpu-1gb rootfs=devbox:1 out="" swap="" keep_on_fail=0 egress_all=0
   COS_EGRESS=(); local -a excl=() _d; local OPTIND=1 o doms d
-  while getopts "s:r:e:o:p:x:w:EKh" o; do case $o in
+  while getopts "s:r:e:o:p:x:w:v:EKh" o; do case $o in
     s) shape=$OPTARG;; r) rootfs=$OPTARG;; o) out=$OPTARG;; w) swap=$OPTARG;;
+    v) add_env "$OPTARG";;
     e) COS_EGRESS+=(--egress "$OPTARG");;
-    p) doms=$(egress_preset "$OPTARG") || die "unknown egress preset '$OPTARG' (have: python-uv rust-cargo npm github)"
+    p) doms=$(egress_preset "$OPTARG") || die "unknown egress preset '$OPTARG' (have: $EGRESS_PRESETS)"
        read -ra _d <<<"$doms"; for d in "${_d[@]}"; do COS_EGRESS+=(--egress "$d"); done;;
     x) excl+=("$OPTARG");;
     E) egress_all=1;;
@@ -270,8 +452,10 @@ cos offload — run a command in a throwaway sandbox (stage → run → pull →
 flags:
   -s shape   -r rootfs   -o out (tar dir to pull back)   -w GB (swap)   -K keep box on failure
   -e <domain>            allow one egress domain (repeatable)
-  -p <preset>            egress preset: python-uv | rust-cargo | npm | github (repeatable, composes with -e)
+  -p <preset>            egress preset: python-uv | rust-cargo | npm | github | openrouter | openai | anthropic | cursor (repeatable, composes with -e)
   -E                     unrestricted egress (trusted offload)
+  -v KEY[=VAL]           declare an env var in the box (repeatable); bare KEY forwards this shell's
+                         value, keeping a secret out of shell history and the agent transcript
   -x <glob>              extra upload exclude (repeatable; .git/target/node_modules/__pycache__/.venv/media excluded by default)
 example:
   cos offload -p python-uv -p rust-cargo -x target . 'uv sync --frozen --group dev && uv run pytest -q'
@@ -282,15 +466,16 @@ EOF
 cmd_up(){
   _norm "$@"; set -- ${NORMA[@]+"${NORMA[@]}"}
   local shape=s-2vcpu-2gb rootfs=devbox:1 name="" egress_all=0 adopt=0; COS_EGRESS=(); local -a _d; local OPTIND=1 o doms d
-  while getopts "s:r:n:e:p:Eah" o; do case $o in
+  while getopts "s:r:n:e:p:v:Eah" o; do case $o in
     s) shape=$OPTARG;; r) rootfs=$OPTARG;; n) name=$OPTARG;;
+    v) add_env "$OPTARG";;
     e) COS_EGRESS+=(--egress "$OPTARG");;
-    p) doms=$(egress_preset "$OPTARG") || die "unknown egress preset '$OPTARG'"
+    p) doms=$(egress_preset "$OPTARG") || die "unknown egress preset '$OPTARG' (have: $EGRESS_PRESETS)"
        read -ra _d <<<"$doms"; for d in "${_d[@]}"; do COS_EGRESS+=(--egress "$d"); done;;
     E) egress_all=1;;
     a) adopt=1;;
-    h) echo "cos up [-s shape] [-r rootfs] [-n name] [-e dom|-p preset|-E] [-a]"; exit 0;;
-    *) die "usage: cos up [-s shape] [-r rootfs] [-n name] [-e dom|-p preset|-E] [-a]";; esac; done
+    h) echo "cos up [-s shape] [-r rootfs] [-n name] [-e dom|-p preset|-E] [-v KEY[=VAL]] [-a]"; exit 0;;
+    *) die "usage: cos up [-s shape] [-r rootfs] [-n name] [-e dom|-p preset|-E] [-v KEY[=VAL]] [-a]";; esac; done
   [ "$egress_all" = 1 ] && COS_EGRESS=()
   lock_state   # held across check → create → write; released on return via EXIT trap
   local cur curname; cur=$(state_get id); curname=$(state_get name)
@@ -743,14 +928,15 @@ cluster_ls(){
 cluster_up(){
   _norm "$@"; set -- ${NORMA[@]+"${NORMA[@]}"}
   local shape=s-1vcpu-1gb rootfs=devbox:1 egress_all=0; COS_EGRESS=(); local -a _d; local OPTIND=1 o doms d
-  while getopts "s:r:e:p:Eh" o; do case $o in
+  while getopts "s:r:e:p:v:Eh" o; do case $o in
     s) shape=$OPTARG;; r) rootfs=$OPTARG;;
+    v) add_env "$OPTARG";;
     e) COS_EGRESS+=(--egress "$OPTARG");;
-    p) doms=$(egress_preset "$OPTARG") || die "unknown egress preset '$OPTARG'"
+    p) doms=$(egress_preset "$OPTARG") || die "unknown egress preset '$OPTARG' (have: $EGRESS_PRESETS)"
        read -ra _d <<<"$doms"; for d in "${_d[@]}"; do COS_EGRESS+=(--egress "$d"); done;;
     E) egress_all=1;;
-    h) echo "cos cluster up <N> [-s shape] [-r rootfs] [-e dom|-p preset|-E]"; exit 0;;
-    *) die "usage: cos cluster up <N> [-s shape] [-r rootfs] [-e dom|-p preset|-E]";; esac; done
+    h) echo "cos cluster up <N> [-s shape] [-r rootfs] [-e dom|-p preset|-E] [-v KEY[=VAL]]"; exit 0;;
+    *) die "usage: cos cluster up <N> [-s shape] [-r rootfs] [-e dom|-p preset|-E] [-v KEY[=VAL]]";; esac; done
   shift $((OPTIND-1))
   local n=${1:?count required: cos cluster up <N>}
   numeric "$n" || die "count not numeric: $n"
@@ -969,14 +1155,15 @@ on_shell_exit(){ [ -n "$SHELL_ID" ] || return 0
 cmd_shell(){
   _norm "$@"; set -- ${NORMA[@]+"${NORMA[@]}"}
   local shape=s-1vcpu-1gb rootfs=devbox:1 egress_all=0; COS_EGRESS=(); local -a _d; local OPTIND=1 o doms d
-  while getopts "s:r:e:p:Eh" o; do case $o in
+  while getopts "s:r:e:p:v:Eh" o; do case $o in
     s) shape=$OPTARG;; r) rootfs=$OPTARG;;
+    v) add_env "$OPTARG";;
     e) COS_EGRESS+=(--egress "$OPTARG");;
-    p) doms=$(egress_preset "$OPTARG") || die "unknown egress preset '$OPTARG'"
+    p) doms=$(egress_preset "$OPTARG") || die "unknown egress preset '$OPTARG' (have: $EGRESS_PRESETS)"
        read -ra _d <<<"$doms"; for d in "${_d[@]}"; do COS_EGRESS+=(--egress "$d"); done;;
     E) egress_all=1;;
-    h) echo "cos shell [-s shape] [-r rootfs] [-e dom|-p preset|-E]"; exit 0;;
-    *) die "usage: cos shell [-s shape] [-r rootfs] [-e dom|-p preset|-E]";; esac; done
+    h) echo "cos shell [-s shape] [-r rootfs] [-e dom|-p preset|-E] [-v KEY[=VAL]]"; exit 0;;
+    *) die "usage: cos shell [-s shape] [-r rootfs] [-e dom|-p preset|-E] [-v KEY[=VAL]]";; esac; done
   [ "$egress_all" = 1 ] && COS_EGRESS=()
   SHELL_ID=$(create_box "cos-sh-$$-${RANDOM}" "$shape" "$rootfs")
   trap on_shell_exit EXIT INT TERM      # destroy on exit / Ctrl-C / error
@@ -1012,10 +1199,11 @@ fanout_one(){ # $1=idx $2=cmd $3=shape $4=rootfs $5=staged-tar $6=resdir
 cmd_fanout(){
   _norm "$@"; set -- ${NORMA[@]+"${NORMA[@]}"}
   local shape=s-1vcpu-1gb rootfs=devbox:1 jobs=2 egress_all=0; COS_EGRESS=(); local -a excl=() _d; local OPTIND=1 o doms d
-  while getopts "s:r:j:e:p:x:Eh" o; do case $o in
+  while getopts "s:r:j:e:p:x:v:Eh" o; do case $o in
     s) shape=$OPTARG;; r) rootfs=$OPTARG;; j) jobs=$OPTARG;;
+    v) add_env "$OPTARG";;
     e) COS_EGRESS+=(--egress "$OPTARG");;
-    p) doms=$(egress_preset "$OPTARG") || die "unknown egress preset '$OPTARG'"
+    p) doms=$(egress_preset "$OPTARG") || die "unknown egress preset '$OPTARG' (have: $EGRESS_PRESETS)"
        read -ra _d <<<"$doms"; for d in "${_d[@]}"; do COS_EGRESS+=(--egress "$d"); done;;
     x) excl+=("$OPTARG");;
     E) egress_all=1;;
@@ -1151,6 +1339,8 @@ main_usage(){ cat <<'EOF'
 cos — CreateOS sandbox as remote compute.  (run `cos install` to put `cos` on PATH)
   cos auth                            check sign-in (CREATEOS_API_KEY, or `createos login` in a real terminal)
   cos offload [flags] <dir> <cmd>     one-shot: stage→run(keepalive)→pull→destroy   (cos offload -h for flags)
+  cos agent [flags] <agent> <dir> <prompt>   run claude|codex|opencode|pi|cursor on your code in a box
+                                      against OpenRouter / any OpenAI- or Anthropic-compatible provider (cos agent -h)
   cos fanout [-j N][flags] <dir> <cmd>...   run each <cmd> in its own throwaway box, in parallel  (cos fanout -h)
   cos shell [-s][-r][-e|-p|-E]        instant throwaway interactive Linux (destroyed on exit)
   cos up   [-s][-r][-n][-e|-p|-E][-a] create/reuse project box (-a adopt a box cos didn't create)
@@ -1187,6 +1377,7 @@ case "$sub" in
   install)  cmd_install "$@";;
   auth)     cmd_auth "$@";;
   offload)  cmd_offload "$@";;
+  agent)    cmd_agent "$@";;
   fanout)   cmd_fanout "$@";;
   shell)    cmd_shell "$@";;
   up)       cmd_up "$@";;
