@@ -21,6 +21,7 @@ PAIRS=(
   "packages/claude-code-plugin/scripts/cos:packages/codex-plugin/scripts/cos"
   "packages/claude-code-plugin/scripts/offload-hint.sh:packages/codex-plugin/scripts/offload-hint.sh"
   "packages/claude-code-plugin/skills/using-createos-sandbox/SKILL.md:packages/codex-plugin/skills/using-createos-sandbox/SKILL.md"
+  "packages/claude-code-plugin/skills/using-createos-sandbox/references/coding-agents.md:packages/codex-plugin/skills/using-createos-sandbox/references/coding-agents.md"
   "packages/claude-code-plugin/skills/using-createos-sandbox/references/lifecycle-and-images.md:packages/codex-plugin/skills/using-createos-sandbox/references/lifecycle-and-images.md"
   "packages/claude-code-plugin/skills/using-createos-sandbox/references/networking.md:packages/codex-plugin/skills/using-createos-sandbox/references/networking.md"
   "packages/claude-code-plugin/skills/using-createos-sandbox/references/offload-and-egress.md:packages/codex-plugin/skills/using-createos-sandbox/references/offload-and-egress.md"
