@@ -169,42 +169,21 @@ cos computer open https://example.com
 cos computer click 640 400
 cos computer type 'hello'
 cos computer key ctrl l              # a chord
-cos computer help                    # every op, plus `raw` for the rest of the API
+cos computer help                    # every op cos wraps
 ```
 
-The two halves are independent and useful together: the URL lets the **user** watch and take over in a browser, while `cos computer` lets **you** act. `desktop:1` ships the same five agent CLIs `devbox:1` does, so "run an agent on a box and let the user watch the screen" needs no extra setup — see Pattern E and `references/coding-agents.md` for pointing them at a provider.
+The two halves are independent and useful together: the URL lets the **user** watch and take over in a browser, while `cos computer` lets **you** act. `desktop:1` also ships the Claude Code, Codex, Pi, OpenCode and Cursor CLIs, so "run an agent on a box and let the user watch the screen" needs no extra setup.
+
+Both verbs are thin wrappers over `createos sandbox desktop` and `createos sandbox computer`. cos adds only the project-box resolution — which box belongs to this directory, and creating one on a desktop image when there is none. Anything cos does not wrap is reachable directly: run `createos sandbox computer --help` for the full op list, including clipboard, window manipulation and screen resize. A box you address by name or id needs no project state, so `createos sandbox computer screenshot <box>` works on any desktop box, not just this project's.
 
 Things that will bite you if you skip them:
 
 - **Take a screenshot before you click, and after.** You are driving blind otherwise — nothing in this API confirms that a click landed on what you meant.
 - **Coordinates are raw X11 pixels** of that screen, with no scaling or DPI translation anywhere. Read the bounds from `cos computer screen` rather than assuming 1280x800.
-- **The desktop boots after the box reports `running`.** `cos desktop` polls for readiness; a bare `cos up -r desktop:1` does not, and every computer call will fail until the stack is up.
-- **A `409` is ambiguous by design.** fc returns `desktop_unavailable` both while the desktop is still coming up and when an action fails on a perfectly healthy desktop, so never read it as "the box is broken".
+- **The desktop boots after the box reports `running`.** `cos desktop` waits for readiness; a bare `cos up -r desktop:1` does not, and every computer call will fail until the stack is up.
+- **A `409` is ambiguous by design.** fc returns `desktop_unavailable` both while the desktop is still coming up and when an action fails on a perfectly healthy desktop, so never read it as "the box is broken". The CLI retries the first case for you during `cos desktop`.
 - **The noVNC link is a bearer URL** — anyone holding it can drive the desktop, and the token expires. Say so when handing it over, and don't paste it anywhere it will outlive the box.
-- This is the one place `cos` calls the CreateOS REST API directly, because the `createos` CLI has no computer or desktop command yet. Everything else still goes through the CLI.
-
-## Pattern E — hand the job to another coding agent
-
-`devbox:1` ships five agent CLIs — `claude`, `codex`, `opencode`, `pi`, `cursor-agent` — so "have a different agent do this in a box" needs no install. Each can be pointed at **OpenRouter, an OpenAI-compatible provider, or an Anthropic-compatible one** (with real exceptions, below), so this does not require the user to hold an Anthropic subscription.
-
-```bash
-export OPENROUTER_API_KEY=sk-or-...                            # in the user's own shell
-cos agent -m openai/gpt-5.6-luna -o . claude . 'fix the failing tests'
-cos agent -P anthropic -m claude-sonnet-4-5 -o . pi . 'add type hints'
-cos agent -P https://gw.example.com/v1 -k MY_KEY -o . codex . 'port this to v2'
-```
-
-`cos agent <agent> <dir> <prompt>` stages the directory, wires the agent to the provider, runs it headless with its permission gate off (the microVM is the isolation), and destroys the box. Flags: `-P` provider (default `openrouter`), `-m` model, `-k` the env var holding the key, plus every `offload` flag.
-
-What to get right:
-
-- **`-o .` or the work is lost.** Without it the box is destroyed with the agent's edits inside and you keep only the transcript. Run it on a clean tree so `git diff` shows exactly what changed.
-- **Keys come from the user's shell via `-v`/`-k`, never from the conversation.** Same rule as the CreateOS key — asking them to paste a provider key writes it to the transcript.
-- **Two agents can't be repointed the way you'd assume.** `cursor-agent` runs only on Cursor's own service — no third-party provider path exists. `codex` speaks only the OpenAI **Responses** wire, so a plain Chat-Completions gateway is rejected at config load. `opencode` and `pi` will talk to anything.
-- **An agent box holds an API key**, so `-p openrouter` (or `-p openai` / `-p anthropic`) is worth reaching for, composed with whatever registries the task itself needs: `-p openrouter -p npm`.
-
-The per-agent env blocks, the wire-protocol matrix, and the traps (claude needs `IS_SANDBOX=1` as root; `openrouter.ai/api` vs `/api/v1`) → **`references/coding-agents.md`**.
-
+- **These need a recent `createos` CLI.** Desktop and computer-use moved out of cos into the CLI, so an older binary has no `sandbox computer` command. `cos` says so and tells the user to upgrade rather than failing obscurely.
 ## Scratch box and data disks
 
 ```bash
