@@ -46,7 +46,7 @@ jobs:
   verify:
     permissions:
       contents: read
-    runs-on: ubuntu-latest
+    runs-on: [createos]
     outputs:
       version: ${{ steps.check.outputs.version }}
     steps:
@@ -103,7 +103,7 @@ jobs:
     needs: verify
     permissions:
       contents: read
-    runs-on: ubuntu-latest
+    runs-on: [createos]
     defaults:
       run:
         working-directory: packages/langflow-sandbox-createos
@@ -134,7 +134,7 @@ jobs:
     needs: [verify, test]
     permissions:
       contents: read
-    runs-on: ubuntu-latest
+    runs-on: [createos]
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -185,7 +185,7 @@ jobs:
 
   publish:
     needs: [verify, build]
-    runs-on: ubuntu-latest
+    runs-on: [createos]
     # Named environments let you require a human approval before either target
     # in the repository's environment protection rules.
     environment:
