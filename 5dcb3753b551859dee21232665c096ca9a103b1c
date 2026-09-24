@@ -1,0 +1,1 @@
+Session: added cos exec (remote code execution) per user request; egress open by default at user's direction, -N opt-in deny. Codex adversarial review: fixed arg normalization, .js CJS mode, slash-command exit masking; DNS-exfil finding deferred by user. Verified live against CreateOS sandboxes.
