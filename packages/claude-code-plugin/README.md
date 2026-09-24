@@ -277,7 +277,7 @@ The two halves compose: the URL lets **you** watch and take over in a browser wh
 | **Raw pixels**             | Coordinates are unscaled X11 pixels of that screen. Read the bounds from `cos computer screen`.                                                                              |
 | **Needs ingress**          | `desktop` enables it for you. `unexpose` turns it off and kills the link.                                                                                                    |
 
-> `desktop` and `computer` are the only `cos` commands that call the CreateOS REST API directly — the `createos` CLI has no computer or desktop command yet. Everything else shells out to the CLI as usual. Auth is reused as-is: `CREATEOS_API_KEY` or `~/.createos/.token` go out as `X-Api-Key`, a browser session's JWT as `X-Access-Token`.
+> `desktop` and `computer` shell out to `createos sandbox desktop` and `createos sandbox computer`, like every other `cos` verb. `cos` adds only the project-box resolution: which box belongs to this directory, and creating one on a desktop image when there is none. Ops `cos` does not wrap — clipboard, window manipulation, screen resize — are reachable with `createos sandbox computer --help`. These commands need a `createos` CLI new enough to carry them; `cos` checks and tells the user to upgrade if not.
 
 ```
 /createos-sandbox:desktop  [-s shape] [-S screen-N]
