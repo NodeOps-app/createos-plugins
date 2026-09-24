@@ -4,7 +4,7 @@ argument-hint: "up <N> [-s shape] [-e dom|-p preset|-E] | run [<name|idx>|-a] <c
 allowed-tools: Bash
 ---
 
-Spin up N sandboxes on one private overlay network. Members reach each other by name — but the name must be **fully qualified**: `curl http://cos-cl-<key>-2.fc.local:8080` resolves, the bare `cos-cl-<key>-2` returns NXDOMAIN. Egress defaults to unrestricted on every member; `-e`/`-p` restrict to an exact set, `-E` to keep it explicitly unrestricted. `run` execs on one member (index `1..N`, its name, or `-a` for all). Clusters count against quota (2 running at once on external keys) — keep N small.
+Spin up N sandboxes on one private overlay network. Members reach each other by name — but the name must be **fully qualified**: `curl http://cos-cl-<key>-2.fc.local:8080` resolves, the bare `cos-cl-<key>-2` returns NXDOMAIN. Egress defaults to unrestricted on every member; `-e`/`-p` restrict to an exact set, `-E` to keep it explicitly unrestricted. `run` execs on one member (index `1..N`, its name, or `-a` for all). Clusters count against the account's running quota (observed around 10 at once) — keep N small.
 
 !`"${CLAUDE_PLUGIN_ROOT}/scripts/cos" cluster $ARGUMENTS`
 
