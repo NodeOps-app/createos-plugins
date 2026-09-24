@@ -420,6 +420,7 @@ Add more with `-x <glob>` (repeatable). Install dependencies **inside** the box 
 | `offload-and-egress.md`   | offload flag table, egress presets and enforcement caveats, fanout, upload excludes, heavy-build OOM/disk/bandwidth traps                                                  |
 | `networking.md`           | choosing between tunnel/expose/cluster/vpn, cluster DNS names, expose gotchas, WireGuard setup                                                                             |
 | `lifecycle-and-images.md` | pause/resume, auto-pause tuning, fork caveats, built-in rootfs vs custom templates, env vars, remote editor, self-terminating jobs, single-file transfer, measured timings |
+| `docs.md`                 | index of every live [CreateOS Sandbox docs](https://createos.sh/docs/Sandbox) page as a raw `.md` URL, so Claude fetches the current REST / SDK / CLI reference on demand instead of carrying it |
 
 ## Hooks
 
