@@ -125,9 +125,12 @@ export const CreateOSPlugin: Plugin = async ({ project, client, $, directory }) 
           `ONE call: it creates the box, stages the dir, runs, and destroys the box. Do not hand-roll that out of ` +
           `sandbox_create + sandbox_exec — that drops egress restriction, the keepalive, and the guaranteed destroy.\n` +
           `- Several variants of that at once (shards, a config matrix) → sandbox_fanout\n` +
+          `- Untrusted code or any ad-hoc script/snippet you would otherwise run locally → sandbox_run_code (code + lang)\n` +
           `- "mount/sync this dir" → sandbox_sync local_dir="${hostCwd}" remote_dir="/root/project"\n` +
           `- Port access → sandbox_preview_url (public URL) > sandbox_tunnel (localhost) > device VPN (last resort)\n` +
-          `- Multi-node → sandbox_network_create + sandbox_create with network + sandbox_exec on other sandboxes`,
+          `- Multi-node → sandbox_network_create + sandbox_create with network + sandbox_exec on other sandboxes\n` +
+          `- Questions about CreateOS Sandbox itself (REST API, SDKs, CLI, limits) → fetch the matching page listed in ` +
+          `https://createos.sh/docs/llms.txt (under /Sandbox/); every page is raw markdown at https://createos.sh/docs<path>.md`,
       );
     },
 

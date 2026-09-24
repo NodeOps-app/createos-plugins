@@ -81,6 +81,15 @@ it actually needs), the keepalive, and the guaranteed destroy, so a "successful"
 leave an unrestricted box billing. The upload already skips `.git`, `node_modules`,
 `target`, virtualenvs and large media.
 
+### Run untrusted code or an ad-hoc script
+
+`sandbox_run_code` is remote code execution for one program: pass the source as `code` with a
+`lang` (py, js, mjs, cjs, ts, go, sh, rb, c, cpp, rs), plus optional `args`, `stdin` and
+`timeout_sec` (default 120, exit 124 when hit). It returns stdout, stderr and the exit code and
+destroys the box. Egress is open unless `egress_deny_all` or presets restrict it. Its prompt
+guidelines also point the agent at the live CreateOS Sandbox docs
+(`https://createos.sh/docs/llms.txt`, each page raw markdown at `<path>.md`).
+
 ### Drive a graphical desktop
 
 On a sandbox created with `rootfs: desktop:1`, `sandbox_desktop` mints a live noVNC link the

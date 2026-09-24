@@ -143,6 +143,7 @@ Setup, configuration, limits, and troubleshooting live in the
 | Command                                          | What                                                                    |
 | ------------------------------------------------ | ----------------------------------------------------------------------- |
 | `/createos-sandbox:offload <dir> <cmd>`          | one-shot: stage → run → pull artifacts → destroy                        |
+| `/createos-sandbox:exec <file> [args]`           | run one untrusted/ad-hoc source file in a throwaway box                 |
 | `/createos-sandbox:fanout <dir> <cmd1> [cmd2 …]` | run each command in its own throwaway box, in parallel                  |
 | `/createos-sandbox:shell`                        | instant throwaway interactive Linux (destroyed on exit)                 |
 | `/createos-sandbox:up` · `run` · `sync` · `down` | reusable per-repo box + file sync for live dev loops                    |

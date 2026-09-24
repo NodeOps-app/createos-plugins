@@ -74,6 +74,7 @@ Two shapes of work, two tools. Getting this wrong is the most common mistake:
 
 | Work                                                         | Tool                                                      |
 | ------------------------------------------------------------ | --------------------------------------------------------- |
+| Untrusted code or any ad-hoc script — one program's source   | `sandbox_run_code` — stdout, stderr, exit code; box destroyed |
 | Has a finish line — a build, a test suite, a script          | `sandbox_offload` — one call, box destroyed afterwards    |
 | Several variants of that at once — shards, a config matrix   | `sandbox_fanout` — one throwaway box per command          |
 | Outlives one command — a dev server, a watcher, a session    | `sandbox_create` + `sandbox_exec`, then `sandbox_destroy` |
@@ -84,7 +85,11 @@ build actually needs, a keepalive so a dropped stream does not kill a long build
 guaranteed destruction even when the command throws, and staging excludes that
 keep `.git`, `node_modules`, `target` and large media off the wire.
 
-## Tool inventory (38 tools)
+For questions about CreateOS Sandbox itself, the agent is told to fetch the live docs:
+every page listed under `/Sandbox/` in <https://createos.sh/docs/llms.txt> is raw
+markdown at `https://createos.sh/docs<path>.md`.
+
+## Tool inventory (39 tools)
 
 ### Offload engine
 
@@ -92,6 +97,7 @@ keep `.git`, `node_modules`, `target` and large media off the wire.
 | -------------------- | ---------------------------------------------------------------------------- |
 | `sandbox_offload`    | Stage a directory, run a command, pull artifacts, destroy the box            |
 | `sandbox_fanout`     | Run each of several commands in its own throwaway box, in parallel           |
+| `sandbox_run_code`   | Remote code execution: run one program (py/js/ts/go/sh/rb/c/cpp/rs) with stdin, args and a timeout; egress open unless `egress_deny_all`/presets |
 
 ### Desktop / computer use
 

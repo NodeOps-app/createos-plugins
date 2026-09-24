@@ -15,7 +15,7 @@
  * file drops into any TypeScript plugin.
  */
 
-import { execSync } from "node:child_process";
+import { execSync, spawnSync } from "node:child_process";
 import { existsSync, readFileSync, writeFileSync } from "node:fs";
 import { homedir } from "node:os";
 
@@ -191,9 +191,16 @@ export interface EgressOptions {
   egressPresets?: string[];
   /** Unrestricted egress — only for a trusted offload. */
   egressAll?: boolean;
+  /** Deny ALL egress: any rule flips CreateOS to deny-by-default, and an IP rule is
+   *  enforced at once (hostname rules are not), so one unroutable TEST-NET-1 address
+   *  allows nothing. Mirrors `cos exec -N`. */
+  egressDenyAll?: boolean;
 }
 
+export const DENY_ALL_EGRESS = "192.0.2.1/32";
+
 export function egressArgs(opts: EgressOptions): { args: string[]; warning?: string } {
+  if (opts.egressDenyAll) return { args: ["--egress", DENY_ALL_EGRESS] };
   if (opts.egressAll) return { args: [], warning: undefined };
   const domains = [
     ...(opts.egress ?? []),
@@ -516,6 +523,111 @@ export function cleanupFailureNote(sandboxId: string, error?: string): string {
     `Destroy it by hand: createos sandbox rm -y ${sandboxId}` +
     (error ? ` (${error})` : "")
   );
+}
+
+// ---------------------------------------------------------------------------
+// Remote code execution — one source file in a throwaway box (`cos exec`)
+// ---------------------------------------------------------------------------
+
+/** Language → file name in /work and the command that runs it. `.js` stays CommonJS-capable. */
+export const RUN_CODE_LANGS: Record<string, { file: string; run: string }> = {
+  py: { file: "main.py", run: "python3 main.py" },
+  js: { file: "main.js", run: "node main.js" },
+  mjs: { file: "main.mjs", run: "node main.mjs" },
+  cjs: { file: "main.cjs", run: "node main.cjs" },
+  ts: { file: "main.ts", run: "bun main.ts" },
+  go: { file: "main.go", run: "go run main.go" },
+  sh: { file: "main.sh", run: "bash main.sh" },
+  rb: { file: "main.rb", run: "ruby main.rb" },
+  c: { file: "main.c", run: "gcc -O2 -o main main.c && ./main" },
+  cpp: { file: "main.cpp", run: "g++ -O2 -o main main.cpp && ./main" },
+  rs: { file: "main.rs", run: "rustc -O -o main main.rs && ./main" },
+};
+
+export interface RunCodeOptions extends EgressOptions {
+  code: string;
+  lang: string;
+  /** Passed to the program untouched. */
+  args?: string[];
+  stdin?: string;
+  /** Wall-clock limit; the program is killed and exits 124 when hit. Default 120. */
+  timeoutSec?: number;
+  shape?: string;
+  rootfs?: string;
+}
+
+export interface RunCodeResult extends ExecResult {
+  timedOut: boolean;
+  durationMs: number;
+  warnings: string[];
+}
+
+/** The in-box command: timeout-wrapped, stdin from a pushed file or /dev/null. */
+export function runCodeCommand(
+  lang: string,
+  args: string[],
+  timeoutSec: number,
+  hasStdin: boolean,
+): string {
+  const spec = RUN_CODE_LANGS[lang];
+  if (!spec) {
+    throw new Error(
+      `Unsupported language '${lang}' — have: ${Object.keys(RUN_CODE_LANGS).join(", ")}`,
+    );
+  }
+  const run = [spec.run, ...args.map(shq)].join(" ");
+  return `cd /work && timeout -k 5 ${timeoutSec} bash -c ${shq(run)} <${hasStdin ? ".stdin" : "/dev/null"}`;
+}
+
+/**
+ * Run one piece of code off the user's machine: create → push → run → destroy.
+ * Buffered exec on purpose — a job that outlives one exec stream belongs in offload().
+ */
+export async function runCode(opts: RunCodeOptions): Promise<RunCodeResult> {
+  assertAuth();
+  const timeoutSec = opts.timeoutSec ?? 120;
+  const cmd = runCodeCommand(opts.lang, opts.args ?? [], timeoutSec, opts.stdin !== undefined);
+  const { id, warning } = createBox({
+    ...opts,
+    name: `cos-x-${process.pid}-${Math.floor(Math.random() * 1e6)}`,
+  });
+  const warnings = warning ? [warning] : [];
+  try {
+    if (!(await waitRunning(id))) throw new Error(`Sandbox ${id} did not reach running within 30s`);
+    const push = (content: string, remote: string) => {
+      const res = spawnSync("createos", ["sandbox", "push", id, "-", remote], {
+        input: content,
+        encoding: "utf-8",
+        timeout: 120_000,
+      });
+      if (res.status !== 0)
+        throw new Error(
+          `Push of ${remote} failed: ${(res.stderr || res.stdout || String(res.error)).trim()}`,
+        );
+    };
+    push(opts.code, `/work/${RUN_CODE_LANGS[opts.lang].file}`);
+    if (opts.stdin !== undefined) push(opts.stdin, "/work/.stdin");
+    const t0 = Date.now();
+    // spawnSync, not execShell: execShell drops stderr when the exit code is 0,
+    // and a program's stderr is part of its answer.
+    const r = spawnSync("createos", ["sandbox", "exec", id, "--", "bash", "-lc", cmd], {
+      encoding: "utf-8",
+      timeout: (timeoutSec + 60) * 1000,
+      maxBuffer: 64 * 1024 * 1024,
+    });
+    const code = r.status ?? 1;
+    return {
+      code,
+      stdout: r.stdout ?? "",
+      stderr: r.stderr || (r.error ? String(r.error) : ""),
+      timedOut: code === 124,
+      durationMs: Date.now() - t0,
+      warnings,
+    };
+  } finally {
+    const d = destroyBox(id);
+    if (!d.ok) warnings.push(cleanupFailureNote(id, d.error));
+  }
 }
 
 /**

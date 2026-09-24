@@ -70,7 +70,7 @@ The plugin is a **thin Claude-facing surface** over the `createos` CLI. It ships
 
 | Piece              | Path                                                     | Role                                                                                                        |
 | ------------------ | -------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------- |
-| **Slash commands** | `commands/*.md`                                          | 20 commands (`offload`, `fanout`, `shell`, …), each a thin wrapper that calls `scripts/cos`                 |
+| **Slash commands** | `commands/*.md`                                          | 22 commands (`offload`, `exec`, `fanout`, `shell`, …), each a thin wrapper that calls `scripts/cos`                 |
 | **Skill**          | `skills/using-createos-sandbox/SKILL.md` + `references/` | teaches Claude _when_ to reach for the sandbox on its own, with depth loaded on demand                      |
 | **Hooks**          | `hooks/hooks.json` + `scripts/`                          | `SessionStart` publishes the driver's absolute path; `PreToolUse(Bash)` nudges on heavy build/test commands |
 | **Driver**         | `scripts/cos`                                            | the actual logic — staging, egress, keepalive, sync, networking, lifecycle, state                           |
@@ -125,6 +125,7 @@ claude --plugin-dir /path/to/createos-plugin/packages/claude-code-plugin
 | Command                                                                                                   | Summary                                                             |
 | --------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------- |
 | [`offload`](#offload--one-shot) `[flags] <dir> <cmd>`                                                     | one-shot: stage → run (keepalive) → pull → destroy                  |
+| [`exec`](#exec--remote-code-execution) `[-l lang] [-i stdin] [-t secs] [-N] <file\|-> [args]`                      | run one source file (untrusted/ad-hoc) in a throwaway box              |
 | [`fanout`](#fanout--parallel-boxes) `[-j N] [flags] <dir> <cmd1> [cmd2] …`                                | run each command in its own throwaway box, in parallel              |
 | [`agent`](#coding-agents) `[flags] <agent> <dir> <prompt>`                                                 | run claude/codex/opencode/pi/cursor on your code in a box           |
 | [`shell`](#shell--throwaway-linux) `[-s] [-r] [-e\|-p\|-E]`                                               | instant throwaway interactive Linux (destroyed on exit)             |
@@ -175,6 +176,16 @@ The core command. Stages a directory into a fresh box, runs a command, optionall
 # Python build with locked egress, pull the dist/ folder back
 /createos-sandbox:offload -p python-uv -o dist . "uv sync --frozen && uv run python -m build"
 ```
+
+### Exec — remote code execution
+
+Run untrusted code or any ad-hoc script — anything you would rather not run locally — as one source file in a throwaway box. No directory to stage.
+
+```
+/createos-sandbox:exec [-l lang] [-i stdin-file] [-t secs] [-N] [-p preset] [-e dom] <file> [args...]
+```
+
+Languages `py js mjs cjs ts go sh rb c cpp rs`, picked from the extension or `-l`. `-i` feeds stdin, `-t` caps wall-clock time (default 120 s, exit 124), `-N` denies all egress (default is unrestricted, like `offload`). stdout/stderr and the exit code are the program's own.
 
 **Keepalive:** long or quiet compiles no longer die to exec-stream idle resets — the command runs detached with a heartbeat and re-attaches if the stream drops, so the build (and its cache) survives.
 

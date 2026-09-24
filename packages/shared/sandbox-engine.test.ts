@@ -14,6 +14,7 @@ import {
   cleanupFailureNote,
   egressArgs,
   retentionReasons,
+  runCodeCommand,
 } from "./sandbox-engine.ts";
 
 test("a preset expands to its domains as repeated --egress flags", () => {
@@ -170,4 +171,24 @@ test("shell metacharacters in an artifact path are refused", () => {
 test("an artifact path may not escape /work", () => {
   expect(() => assertSafeOutPath("/etc/passwd")).toThrow(/inside \/work/);
   expect(() => assertSafeOutPath("../../etc")).toThrow(/inside \/work/);
+});
+
+test("egressDenyAll allows only an unroutable IP, so nothing is reachable", () => {
+  expect(egressArgs({ egressDenyAll: true, egressPresets: ["npm"] }).args).toEqual([
+    "--egress",
+    "192.0.2.1/32",
+  ]);
+});
+
+test("runCode passes program args through untouched and bounds the run", () => {
+  const cmd = runCodeCommand("py", ["--name=alice", "a b", "it's"], 30, false);
+  expect(cmd).toBe(
+    `cd /work && timeout -k 5 30 bash -c 'python3 main.py '\\''--name=alice'\\'' '\\''a b'\\'' '\\''it'\\''\\'\\'''\\''s'\\''' </dev/null`,
+  );
+  expect(runCodeCommand("js", [], 5, true)).toContain("node main.js");
+  expect(runCodeCommand("js", [], 5, true)).toEndWith("<.stdin");
+});
+
+test("an unknown language throws instead of guessing a runner", () => {
+  expect(() => runCodeCommand("cobol", [], 5, false)).toThrow(/Unsupported language/);
 });

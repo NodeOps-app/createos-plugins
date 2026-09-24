@@ -332,6 +332,77 @@ export function registerTools(pi: ExtensionAPI, getActive: () => ToolSandbox | n
     },
   });
 
+  // --- Remote code execution ---
+
+  pi.registerTool({
+    name: "sandbox_run_code",
+    label: "Run Code In Throwaway Sandbox",
+    description:
+      "Remote code execution: run one program's source in a throwaway sandbox and destroy it. Returns stdout, " +
+      "stderr and the program's exit code (124 = killed by the timeout). Egress is unrestricted unless restricted.",
+    promptSnippet: "Run untrusted code or an ad-hoc script off this machine",
+    promptGuidelines: [
+      "Use sandbox_run_code for untrusted code and for ANY ad-hoc script or snippet you would otherwise run locally; pass the full source as code. Several files or dependencies to install → sandbox_offload.",
+      "For questions about CreateOS Sandbox itself (REST API, SDKs, CLI, limits), fetch the matching page listed in https://createos.sh/docs/llms.txt under /Sandbox/ — every page is raw markdown at https://createos.sh/docs<path>.md.",
+    ],
+    parameters: Type.Object({
+      code: Type.String({ description: "Full source of the program" }),
+      lang: Type.String({
+        description: `Language: ${Object.keys(engine.RUN_CODE_LANGS).join(" | ")}`,
+      }),
+      args: Type.Optional(
+        Type.Array(Type.String(), { description: "Program arguments, passed through untouched" }),
+      ),
+      stdin: Type.Optional(Type.String({ description: "Text fed to the program's stdin" })),
+      timeout_sec: Type.Optional(
+        Type.Integer({ minimum: 1, description: "Wall-clock limit in seconds (default: 120)" }),
+      ),
+      egress_deny_all: Type.Optional(
+        Type.Boolean({ description: "Block all outbound connections" }),
+      ),
+      egress_presets: Type.Optional(
+        Type.Array(Type.String(), {
+          description:
+            "Allow only what these ecosystems need: python-uv | rust-cargo | npm | github",
+        }),
+      ),
+      egress: Type.Optional(
+        Type.Array(Type.String(), {
+          description: "Allow only these hosts; composes with egress_presets",
+        }),
+      ),
+      shape: Type.Optional(Type.String({ description: "Sandbox size (default: s-1vcpu-1gb)" })),
+    }),
+    async execute(_id, params) {
+      const result = await engine.runCode({
+        code: params.code,
+        lang: params.lang,
+        args: params.args,
+        stdin: params.stdin,
+        timeoutSec: params.timeout_sec,
+        egressDenyAll: params.egress_deny_all,
+        egressPresets: params.egress_presets,
+        egress: params.egress,
+        shape: params.shape,
+      });
+      const header = `exit code ${result.code}${result.timedOut ? " (killed by timeout)" : ""} in ${(
+        result.durationMs / 1000
+      ).toFixed(1)}s`;
+      const warnings = result.warnings.map((warning) => `warning: ${warning}`);
+      const text = [
+        header,
+        ...warnings,
+        "",
+        "stdout:",
+        result.stdout || "(empty)",
+        "",
+        "stderr:",
+        result.stderr || "(empty)",
+      ].join("\n");
+      return { content: [{ type: "text", text }], details: { result } };
+    },
+  });
+
   // --- Desktop / computer use ---
 
   function desktopTarget(params: { sandbox_id?: string; screen?: string }): {

@@ -701,6 +701,61 @@ export function createTools($: any, getActive: () => ToolSandbox | null) {
       },
     }),
 
+    sandbox_run_code: tool({
+      description:
+        "Remote code execution: run untrusted code or ANY ad-hoc script/snippet in a THROWAWAY " +
+        "sandbox instead of on this machine, then destroy the box. Pass the source as `code`. " +
+        "Returns stdout, stderr and the program's exit code (124 = timeout). Use it whenever you " +
+        "would otherwise run a one-off script locally. Several files or dependencies to install → sandbox_offload.",
+      args: {
+        code: tool.schema.string().describe("Full source of the program"),
+        lang: tool.schema
+          .string()
+          .describe(`Language: ${Object.keys(engine.RUN_CODE_LANGS).join(" | ")}`),
+        args: tool.schema
+          .array(tool.schema.string())
+          .optional()
+          .describe("Program arguments, passed through untouched"),
+        stdin: tool.schema.string().optional().describe("Text fed to the program's stdin"),
+        timeout_sec: tool.schema
+          .number()
+          .optional()
+          .describe("Wall-clock limit in seconds, default 120"),
+        egress_deny_all: tool.schema
+          .boolean()
+          .optional()
+          .describe("Block all outbound connections. Egress is unrestricted by default"),
+        egress_presets: tool.schema
+          .array(tool.schema.string())
+          .optional()
+          .describe("Allow only what these ecosystems need: python-uv | rust-cargo | npm | github"),
+        egress: tool.schema
+          .array(tool.schema.string())
+          .optional()
+          .describe("Allow only these hosts; composes with egress_presets"),
+        shape: tool.schema.string().optional().describe("VM size. Defaults to 's-1vcpu-1gb'"),
+      },
+      async execute(args) {
+        const res = await engine.runCode({
+          code: args.code,
+          lang: args.lang,
+          args: args.args,
+          stdin: args.stdin,
+          timeoutSec: args.timeout_sec,
+          egressDenyAll: args.egress_deny_all,
+          egressPresets: args.egress_presets,
+          egress: args.egress,
+          shape: args.shape,
+        });
+        const lines = [
+          `exit code ${res.code}${res.timedOut ? " (killed by timeout)" : ""} in ${(res.durationMs / 1000).toFixed(1)}s`,
+        ];
+        for (const w of res.warnings) lines.push(`warning: ${w}`);
+        lines.push("", "stdout:", res.stdout || "(empty)", "", "stderr:", res.stderr || "(empty)");
+        return lines.join("\n");
+      },
+    }),
+
     sandbox_fanout: tool({
       description:
         "Run each command in its OWN throwaway sandbox, in parallel, from the same staged directory. " +
