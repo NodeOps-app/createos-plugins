@@ -1,4 +1,4 @@
-# Offload, fanout, and the egress firewall
+# Offload, fanout, matrix, and the egress firewall
 
 Read this when an offload needs tuning: restricting what a build can reach, sizing a box for a heavy compile, controlling what gets uploaded, or fanning work across boxes.
 
@@ -9,6 +9,7 @@ Read this when an offload needs tuning: restricting what a build can reach, sizi
 - [Egress: how the firewall actually behaves](#egress-how-the-firewall-actually-behaves)
 - [Egress presets](#egress-presets)
 - [Fanout](#fanout)
+- [Matrix](#matrix)
 - [Heavy builds: OOM, disk, and bandwidth](#heavy-builds-oom-disk-and-bandwidth)
 
 ## Offload flags
@@ -20,7 +21,6 @@ Flags come **before** the `<dir> <cmd>` positionals — `cos` parses with `getop
 | `-s <shape>`  | box size (default `s-1vcpu-1gb`); list with `createos sandbox shapes`         |
 | `-r <rootfs>` | base image or custom template (default `devbox:1`)                            |
 | `-o <path>`   | tar this path out of `/work` back into the local dir after the run            |
-| `-w <GB>`     | try to add a swapfile (best-effort — see below)                               |
 | `-K`          | keep the box if the command exits non-zero, so the cache survives for a retry |
 | `-e <domain>` | allow one outbound destination (repeatable)                                   |
 | `-p <preset>` | apply an egress preset (repeatable, composes with `-e`)                       |
@@ -69,17 +69,30 @@ Presets compose. A Python project with a Rust extension and a git dependency wan
 
 ## Fanout
 
-`cos fanout [-j N] [flags] <dir> <cmd1> [cmd2] …` stages `<dir>` once and runs each command in its **own** throwaway box, concurrently, then reports per-job exit codes and log paths and destroys every box.
+`cos fanout [-j N] [flags] <dir> <cmd1> [cmd2] …` stages `<dir>` once, forks that staged box once per command, runs each command on its own fork concurrently, then reports per-job exit codes and log paths and destroys every fork.
 
-The jobs share no network — that is the difference from `cluster`, where boxes are wired together on purpose. Fanout is for a test matrix, a config sweep, or a batch where isolation between jobs is the point.
+Under the hood this is `createos sandbox matrix` with no `--prepare` — the staged box is the golden box, and each job is a fork of it. The jobs share no network — that is the difference from `cluster`, where boxes are wired together on purpose. Fanout is for a test matrix, a config sweep, or a batch where isolation between jobs is the point and there is no shared setup step worth doing once.
 
-`-j` defaults to 2 because that matches the concurrent-box limit observed on external API keys. Raising it past what the account allows does not fail — the extra jobs just queue, so a 3-way fanout with `-j 3` silently serializes into 2 + 1. One very long build is still better served by a single `offload`.
+`-j` defaults to 10, matching this account's observed concurrent-box limit. Raising it past what the account actually allows does not fail — the extra jobs just queue. One very long build is still better served by a single `offload`.
+
+## Matrix
+
+`cos matrix [-P '<setup>'] [-F <box>] [flags] <dir> <cmd1> [cmd2] …` is `fanout` plus one thing: `-P '<cmd>'` runs once on the golden box, before it forks, so every job's fork already has the dependency install or toolchain prep done.
+
+Reach for this the moment two or more jobs would otherwise repeat the same setup — a `pytest` shard matrix that all need the same `pip install`, three `npm test` invocations that all need the same `npm ci`. The setup is paid once; only the fork (roughly a second) and the job itself are paid per job.
+
+`-F <box>` skips building a golden box from a directory and forks an existing sandbox you already prepared and paused yourself — useful when the setup is expensive enough that you want to keep the golden box around and matrix against it repeatedly (pair with `-G` to keep it after the run too).
+
+Two limits carry over from `createos sandbox matrix --help`, both worth knowing before reaching for `-F` with disks attached or expecting sub-second forks everywhere:
+
+- **A fork drops the golden box's S3 disk attachments.** If the golden box has a disk mounted, the forks come up without it. Re-attach per fork, or avoid disks with matrix.
+- **A fork can take 11–13 s, not always under a second.** That is the cross-host cold-fetch case, when the snapshot is not already cached on the host the fork lands on.
 
 ## Heavy builds: OOM, disk, and bandwidth
 
 **Shape rejection.** Picking a shape the account cannot use fails fast with a `not allowed … Allowed: [...]` line; pick from that list, or run `createos sandbox shapes`. (The rejection is real and reproducible on external keys; the exact policy behind it is not documented, so treat the allowed list as authoritative rather than guessing.)
 
-**Swap is best-effort.** `-w <GB>` tries to add a swapfile, but `devbox:1` cannot currently `swapon` — it stays at 0 MB, `cos` warns, and continues. If a compiled-extension build (pyo3/maturin, torch) is OOMing, the fix is a bigger shape or less work per run: build the extension separately, or install only the extra/group you actually need.
+**Swap has no flag — compose it into the command.** `devbox:1` cannot currently `swapon` a swapfile added after boot from most shapes, so a dedicated `-w` flag bought little; if a compiled-extension build (pyo3/maturin, torch) needs the headroom, add it as the first step of the command itself: `'fallocate -l 4G /swapfile && mkswap /swapfile && swapon /swapfile && <cmd>'`. The more reliable fix for an OOM is still a bigger shape or less work per run — install only the extra/group you actually need.
 
 **Disk fills fast.** `pip install --all-extras` or an unconstrained `uv sync` can pull CUDA and torch wheels measured in gigabytes and hit `No space left on device` on a small box. Install only what the job needs; `--disk-mib` at create time raises the ceiling if you control it.
 

@@ -1,6 +1,6 @@
 ---
 name: using-createos-sandbox
-description: Use when you need to run code OFF the user's machine — ALWAYS for untrusted or unknown code, and for any ad-hoc script or snippet you would otherwise run locally (remote code execution: `cos exec <file>`), heavy/long builds or test suites, a parallel test/config matrix across many boxes, an instant clean Linux to try a tool, a live dev-server/watcher you edit against, reaching a box-side service from localhost (port tunnel) or sharing it on the public web (HTTPS preview URL), a multi-machine cluster on one private network, a WireGuard VPN into that network, mounting an S3 bucket of data, handing a coding task to another agent (Claude Code, Codex, OpenCode, Pi, Cursor) running on OpenRouter or any OpenAI-/Anthropic-compatible provider, or work that needs a real screen — a graphical Linux desktop with a browser that you drive by screenshot/click/type and the user can watch over noVNC. Offloads to ephemeral CreateOS Sandboxes via the `cos` helper (stage → exec → pull → auto-destroy), plus fanout, a scratch shell, and an opt-in reusable box with sync, tunnel, expose, desktop/computer-use, cluster, disk, vpn, pause/resume, custom images, and snapshot/fork. Also use to answer any question about CreateOS Sandbox itself — its REST API, SDKs (TypeScript, Go, Python, Rust, C#, Java), CLI commands, limits, lifecycle, egress, networks, disks, templates, webhooks, or integrations — by fetching the relevant live docs page listed in references/docs.md.
+description: Use when you need to run code OFF the user's machine — ALWAYS for untrusted or unknown code, and for any ad-hoc script or snippet you would otherwise run locally (remote code execution: `cos exec <file>`), heavy/long builds or test suites, a parallel test/config matrix across many boxes, an instant clean Linux to try a tool, a live dev-server/watcher you edit against, reaching a box-side service from localhost (port tunnel) or sharing it on the public web (HTTPS preview URL), a multi-machine cluster on one private network, a WireGuard VPN into that network, mounting an S3 bucket of data, handing a coding task to another agent (Claude Code, Codex, OpenCode, Pi, Cursor) running on OpenRouter or any OpenAI-/Anthropic-compatible provider, or work that needs a real screen — a graphical Linux desktop with a browser that you drive by screenshot/click/type and the user can watch over noVNC. Offloads to ephemeral CreateOS Sandboxes via the `cos` helper (stage → exec → fetch → auto-destroy), plus fanout, matrix (shared-setup fan-out), a scratch shell, and an opt-in reusable box with sync, tunnel, expose, desktop/computer-use, cluster, disk, vpn, pause/resume, custom images, and snapshot/fork. Also use to answer any question about CreateOS Sandbox itself — its REST API, SDKs (TypeScript, Go, Python, Rust, C#, Java), CLI commands, limits, lifecycle, egress, networks, disks, templates, webhooks, or integrations — by fetching the relevant live docs page listed in references/docs.md.
 ---
 
 # Using CreateOS Sandbox as remote compute
@@ -41,7 +41,8 @@ Every `cos` command except `install` and `auth` runs this check first, so an una
 | **Untrusted / unknown code** — a snippet, a fresh npm/pip package, scraped code, a PoC exploit | Isolation. The blast radius is one disposable box, not the laptop. One file → `exec`. |
 | **Any ad-hoc script** — a one-off Python/JS/shell/Go snippet to compute, parse, probe or try something | Keep the laptop clean; `exec` runs it remotely and returns stdout, stderr and the exit code. |
 | **Heavy build or test suite** — big `make`, full test run, compile, benchmark                  | Keeps the laptop free; runs on a box sized for it.                                 |
-| **Parallel/matrix work** — same job across N configs, test shards, batch                       | `fanout` — each command in its own throwaway box, concurrently, results collected. |
+| **Parallel work, independent jobs** — N configs, test shards, batch, no shared setup            | `fanout` — each command on its own fork of one staged box, concurrently.           |
+| **Parallel work, shared setup** — same install/toolchain, then N different commands             | `matrix -P '<setup>'` — the setup runs once, then forks once per job.              |
 | **Quick scratch Linux** — try a CLI/tool/snippet on a clean box                                | `shell` — instant keyless box, destroyed on exit (interactive; the user runs it).  |
 | **Clean-room repro** — "works on my machine" bugs, dependency conflicts                        | Fresh rootfs every time, no host state.                                            |
 | **Live dev loop** — dev server / test watcher / REPL that reacts to edits                      | Project box + `sync`; you edit locally, the box reacts.                        |
@@ -118,10 +119,20 @@ Languages: `py js mjs cjs ts go sh rb c cpp rs` (from the extension, or `-l`). E
 ### Fanout — same input, many boxes, in parallel
 
 ```bash
-cos fanout -j 2 -p python-uv . 'pytest -q tests/unit' 'pytest -q tests/integration' 'ruff check'
+cos fanout -p python-uv . 'pytest -q tests/unit' 'pytest -q tests/integration' 'ruff check'
 ```
 
-Each job gets its own box with no shared network — that is what distinguishes it from `cluster`. `-j` defaults to 2 to match the concurrency external keys have been observed to allow; going higher just queues the extra jobs rather than failing.
+Each job runs on its own fork of one box staged from the directory, with no shared network between jobs — that is what distinguishes it from `cluster`. `-j` defaults to 10, matching this account's observed running concurrency; going higher just queues the extra jobs rather than failing.
+
+### Matrix — same setup, many jobs, in parallel
+
+```bash
+cos matrix -P 'npm ci' . 'npm test -- --shard 1' 'npm test -- --shard 2' 'npm test -- --shard 3'
+```
+
+`fanout` with a shared setup step. `-P '<cmd>'` runs once on the golden box — the dependency install, the toolchain prep — before it forks once per job. Use this the moment two or more jobs would otherwise repeat the same install: the setup cost is paid once instead of once per job. `-F <box>` forks from a sandbox you already prepared and paused yourself, instead of building a new golden box from a directory.
+
+Known limits, both inherited from `createos sandbox matrix --help`: a fork does not carry the golden box's S3 disk attachments (re-attach on each clone, or don't use disks with matrix), and a clone whose snapshot isn't cached on the target host takes 11–13 s to resume rather than the usual sub-second.
 
 ## Pattern B — reusable project box (opt-in)
 
@@ -187,42 +198,21 @@ cos computer open https://example.com
 cos computer click 640 400
 cos computer type 'hello'
 cos computer key ctrl l              # a chord
-cos computer help                    # every op, plus `raw` for the rest of the API
+cos computer help                    # every op cos wraps
 ```
 
-The two halves are independent and useful together: the URL lets the **user** watch and take over in a browser, while `cos computer` lets **you** act. `desktop:1` ships the same five agent CLIs `devbox:1` does, so "run an agent on a box and let the user watch the screen" needs no extra setup — see Pattern E and `references/coding-agents.md` for pointing them at a provider.
+The two halves are independent and useful together: the URL lets the **user** watch and take over in a browser, while `cos computer` lets **you** act. `desktop:1` also ships the Claude Code, Codex, Pi, OpenCode and Cursor CLIs, so "run an agent on a box and let the user watch the screen" needs no extra setup.
+
+Both verbs are thin wrappers over `createos sandbox desktop` and `createos sandbox computer`. cos adds only the project-box resolution — which box belongs to this directory, and creating one on a desktop image when there is none. Anything cos does not wrap is reachable directly: run `createos sandbox computer --help` for the full op list, including clipboard, window manipulation and screen resize. A box you address by name or id needs no project state, so `createos sandbox computer screenshot <box>` works on any desktop box, not just this project's.
 
 Things that will bite you if you skip them:
 
 - **Take a screenshot before you click, and after.** You are driving blind otherwise — nothing in this API confirms that a click landed on what you meant.
 - **Coordinates are raw X11 pixels** of that screen, with no scaling or DPI translation anywhere. Read the bounds from `cos computer screen` rather than assuming 1280x800.
-- **The desktop boots after the box reports `running`.** `cos desktop` polls for readiness; a bare `cos up -r desktop:1` does not, and every computer call will fail until the stack is up.
-- **A `409` is ambiguous by design.** fc returns `desktop_unavailable` both while the desktop is still coming up and when an action fails on a perfectly healthy desktop, so never read it as "the box is broken".
+- **The desktop boots after the box reports `running`.** `cos desktop` waits for readiness; a bare `cos up -r desktop:1` does not, and every computer call will fail until the stack is up.
+- **A `409` is ambiguous by design.** fc returns `desktop_unavailable` both while the desktop is still coming up and when an action fails on a perfectly healthy desktop, so never read it as "the box is broken". The CLI retries the first case for you during `cos desktop`.
 - **The noVNC link is a bearer URL** — anyone holding it can drive the desktop, and the token expires. Say so when handing it over, and don't paste it anywhere it will outlive the box.
-- This is the one place `cos` calls the CreateOS REST API directly, because the `createos` CLI has no computer or desktop command yet. Everything else still goes through the CLI.
-
-## Pattern E — hand the job to another coding agent
-
-`devbox:1` ships five agent CLIs — `claude`, `codex`, `opencode`, `pi`, `cursor-agent` — so "have a different agent do this in a box" needs no install. Each can be pointed at **OpenRouter, an OpenAI-compatible provider, or an Anthropic-compatible one** (with real exceptions, below), so this does not require the user to hold an Anthropic subscription.
-
-```bash
-export OPENROUTER_API_KEY=sk-or-...                            # in the user's own shell
-cos agent -m openai/gpt-5.6-luna -o . claude . 'fix the failing tests'
-cos agent -P anthropic -m claude-sonnet-4-5 -o . pi . 'add type hints'
-cos agent -P https://gw.example.com/v1 -k MY_KEY -o . codex . 'port this to v2'
-```
-
-`cos agent <agent> <dir> <prompt>` stages the directory, wires the agent to the provider, runs it headless with its permission gate off (the microVM is the isolation), and destroys the box. Flags: `-P` provider (default `openrouter`), `-m` model, `-k` the env var holding the key, plus every `offload` flag.
-
-What to get right:
-
-- **`-o .` or the work is lost.** Without it the box is destroyed with the agent's edits inside and you keep only the transcript. Run it on a clean tree so `git diff` shows exactly what changed.
-- **Keys come from the user's shell via `-v`/`-k`, never from the conversation.** Same rule as the CreateOS key — asking them to paste a provider key writes it to the transcript.
-- **Two agents can't be repointed the way you'd assume.** `cursor-agent` runs only on Cursor's own service — no third-party provider path exists. `codex` speaks only the OpenAI **Responses** wire, so a plain Chat-Completions gateway is rejected at config load. `opencode` and `pi` will talk to anything.
-- **An agent box holds an API key**, so `-p openrouter` (or `-p openai` / `-p anthropic`) is worth reaching for, composed with whatever registries the task itself needs: `-p openrouter -p npm`.
-
-The per-agent env blocks, the wire-protocol matrix, and the traps (claude needs `IS_SANDBOX=1` as root; `openrouter.ai/api` vs `/api/v1`) → **`references/coding-agents.md`**.
-
+- **These need a recent `createos` CLI.** Desktop and computer-use moved out of cos into the CLI, so an older binary has no `sandbox computer` command. `cos` says so and tells the user to upgrade rather than failing obscurely.
 ## Scratch box and data disks
 
 ```bash
@@ -239,7 +229,7 @@ Disk data lives in the user's own S3 account and region. `--path-style` is neede
 
 - Ephemeral boxes self-destroy. The project box carries a 30-minute idle auto-pause as a backstop, so a forgotten box parks itself instead of billing overnight. Raise it with `createos sandbox edit <id> --auto-pause 4h` when a box is serving an exposed URL people will hit intermittently — otherwise the demo will look dead between visitors.
 - Finish a live session with `cos pause` (keeping the warm state) or `cos down` (done for good). Don't leave a running box behind either way.
-- **Concurrency is limited** — external keys have been observed to allow 2 boxes running at once, with a daily creation cap. This is observed behaviour rather than published policy, so budget `cluster` and `fanout` against it and expect excess jobs to queue rather than fail.
+- **Concurrency is limited** — this account has been observed to allow at least 10 boxes running at once, with a daily creation cap. Neither is published policy, so budget `cluster`, `fanout`, and `matrix` against it and expect excess jobs to queue rather than fail. Check the actual number live if a decision hinges on it — it can change per plan.
 - If a shape is rejected, the error names the allowed list — pick from it, or run `createos sandbox shapes`.
 - Pre-existing boxes the user already runs are **not** yours. `cos` only ever destroys boxes it created itself; a box adopted with `cos up -a` survives `cos down`.
 - CreateOS Sandbox is in alpha with no SLA. When a limit or a number matters to a decision, check it live rather than quoting it from here — `createos sandbox shapes`, or the [Limits](https://createos.sh/docs/Sandbox/Limits.md) page.
@@ -250,7 +240,7 @@ Load these when the task actually needs the depth — the summaries above are en
 
 | File                                 | Read it for                                                                                                                                                                |
 | ------------------------------------ | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `references/offload-and-egress.md`   | offload flag table, egress presets and how enforcement really behaves, fanout, upload excludes, heavy-build OOM/disk/bandwidth traps                                       |
+| `references/offload-and-egress.md`   | offload flag table, egress presets and how enforcement really behaves, fanout, matrix, upload excludes, heavy-build OOM/disk/bandwidth traps                                |
 | `references/networking.md`           | choosing between tunnel/expose/cluster/vpn, cluster DNS names, expose gotchas, WireGuard setup                                                                             |
 | `references/coding-agents.md`        | the five agent CLIs in `devbox:1`, per-agent provider wiring (OpenRouter / OpenAI-compatible / Anthropic-compatible), which agents can't be repointed, egress around an agent box |
 | `references/lifecycle-and-images.md` | pause/resume, auto-pause tuning, fork caveats, built-in rootfs vs custom templates, env vars, remote editor, self-terminating jobs, single-file transfer, measured timings |
