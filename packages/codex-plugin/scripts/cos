@@ -990,12 +990,11 @@ cmd_fork(){
   # A fork is an independent clone, so `down` won't destroy it — but record it, or
   # nothing ever will and it leaks silently. `down` reports it; `down -f` reaps it.
   local forks nid; forks=$(state_get fork_ids)
-  for nid in $newids; do forks="${forks:+$forks }$nid"; done
-  state_set fork_ids "$forks"
-
   for nid in $newids; do
+    forks="${forks:+$forks }$nid"
     echo "cos: fork ready: $nid (independent clone; NOT tracked as the project box)" >&2
   done
+  state_set fork_ids "$forks"
   echo "cos:   exec:    createos sandbox exec --stream <id> -- bash -lc '…'" >&2
   echo "cos:   destroy: createos sandbox rm -y <id>   (or 'cos down -f' to reap forks with the box)" >&2
   printf '%s\n' "$newids"
@@ -1212,18 +1211,17 @@ cmd_matrix(){
     h) matrix_usage; exit 0;;
     *) matrix_usage >&2; exit 2;; esac; done
   shift $((OPTIND-1))
+  local dir=""
   if [ -n "$from" ]; then
     [ $# -ge 1 ] || { matrix_usage; exit 0; }
     args+=(--from "$from")
-    local cmd; for cmd in "$@"; do args+=(--job "$cmd"); done
-    "$CLI" sandbox matrix "${args[@]}" ${COS_ENV[@]+"${COS_ENV[@]}"}
   else
     [ $# -ge 2 ] || { matrix_usage; exit 0; }
-    local dir=$1; shift
+    dir=$1; shift
     [ -d "$dir" ] || die "no such dir: $dir"
-    local cmd; for cmd in "$@"; do args+=(--job "$cmd"); done
-    "$CLI" sandbox matrix "${args[@]}" ${COS_ENV[@]+"${COS_ENV[@]}"} "$dir"
   fi
+  local cmd; for cmd in "$@"; do args+=(--job "$cmd"); done
+  "$CLI" sandbox matrix "${args[@]}" ${COS_ENV[@]+"${COS_ENV[@]}"} ${dir:+"$dir"}
 }
 
 # ───────────────────────────── disk: BYO S3 bucket mounts (attach/detach on the project box)
