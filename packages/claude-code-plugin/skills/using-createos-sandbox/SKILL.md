@@ -1,6 +1,6 @@
 ---
 name: using-createos-sandbox
-description: Use when you need to run code OFF the user's machine — heavy/long builds or test suites, untrusted or unknown code, a parallel test/config matrix across many boxes, an instant clean Linux to try a tool, a live dev-server/watcher you edit against, reaching a box-side service from localhost (port tunnel) or sharing it on the public web (HTTPS preview URL), a multi-machine cluster on one private network, a WireGuard VPN into that network, mounting an S3 bucket of data, handing a coding task to another agent (Claude Code, Codex, OpenCode, Pi, Cursor) running on OpenRouter or any OpenAI-/Anthropic-compatible provider, or work that needs a real screen — a graphical Linux desktop with a browser that you drive by screenshot/click/type and the user can watch over noVNC. Offloads to ephemeral CreateOS Sandboxes via the `cos` helper (stage → exec → pull → auto-destroy), plus fanout, a scratch shell, and an opt-in reusable box with sync, tunnel, expose, desktop/computer-use, cluster, disk, vpn, pause/resume, custom images, and snapshot/fork. Also use to answer any question about CreateOS Sandbox itself — its REST API, SDKs (TypeScript, Go, Python, Rust, C#, Java), CLI commands, limits, lifecycle, egress, networks, disks, templates, webhooks, or integrations — by fetching the relevant live docs page listed in references/docs.md.
+description: Use when you need to run code OFF the user's machine — ALWAYS for untrusted or unknown code, and for any ad-hoc script or snippet you would otherwise run locally (remote code execution: `cos exec <file>`), heavy/long builds or test suites, a parallel test/config matrix across many boxes, an instant clean Linux to try a tool, a live dev-server/watcher you edit against, reaching a box-side service from localhost (port tunnel) or sharing it on the public web (HTTPS preview URL), a multi-machine cluster on one private network, a WireGuard VPN into that network, mounting an S3 bucket of data, handing a coding task to another agent (Claude Code, Codex, OpenCode, Pi, Cursor) running on OpenRouter or any OpenAI-/Anthropic-compatible provider, or work that needs a real screen — a graphical Linux desktop with a browser that you drive by screenshot/click/type and the user can watch over noVNC. Offloads to ephemeral CreateOS Sandboxes via the `cos` helper (stage → exec → pull → auto-destroy), plus fanout, a scratch shell, and an opt-in reusable box with sync, tunnel, expose, desktop/computer-use, cluster, disk, vpn, pause/resume, custom images, and snapshot/fork. Also use to answer any question about CreateOS Sandbox itself — its REST API, SDKs (TypeScript, Go, Python, Rust, C#, Java), CLI commands, limits, lifecycle, egress, networks, disks, templates, webhooks, or integrations — by fetching the relevant live docs page listed in references/docs.md.
 ---
 
 # Using CreateOS Sandbox as remote compute
@@ -38,7 +38,8 @@ Every `cos` command except `install` and `auth` runs this check first, so an una
 
 | Situation                                                                                      | Why offload                                                                        |
 | ---------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------- |
-| **Untrusted / unknown code** — a snippet, a fresh npm/pip package, scraped code, a PoC exploit | Isolation. The blast radius is one disposable box, not the laptop.                 |
+| **Untrusted / unknown code** — a snippet, a fresh npm/pip package, scraped code, a PoC exploit | Isolation. The blast radius is one disposable box, not the laptop. One file → `exec`. |
+| **Any ad-hoc script** — a one-off Python/JS/shell/Go snippet to compute, parse, probe or try something | Keep the laptop clean; `exec` runs it remotely and returns stdout, stderr and the exit code. |
 | **Heavy build or test suite** — big `make`, full test run, compile, benchmark                  | Keeps the laptop free; runs on a box sized for it.                                 |
 | **Parallel/matrix work** — same job across N configs, test shards, batch                       | `fanout` — each command in its own throwaway box, concurrently, results collected. |
 | **Quick scratch Linux** — try a CLI/tool/snippet on a clean box                                | `shell` — instant keyless box, destroyed on exit (interactive; the user runs it).  |
@@ -60,6 +61,7 @@ Do NOT offload trivial commands, anything needing the user's local secrets/SSH/c
 Almost every task is one of two shapes, and picking the wrong one wastes a lot of motion:
 
 - **"Run this and tell me the result"** — a test suite, a build, a script, anything with an end. → **`cos offload <dir> <cmd>`.** One command. It creates the box, ships the directory, runs, and destroys the box. Nothing to clean up.
+- **"Run this one piece of code"** — a snippet you wrote or were handed, untrusted code, a solution to test against an input. → **`cos exec <file>`** (or `cos exec -l py -` with the code on stdin). No directory to stage.
 - **"Keep a box around while I work"** — a dev server you'll hit repeatedly, a watcher reacting to edits, a session spanning many commands. → **`cos up`**, then `run`/`sync`, then `pause` or `down`.
 
 If you find yourself doing any of the following, you have picked the wrong shape and should stop and use `offload` instead:
@@ -96,6 +98,22 @@ Two things about this that are easy to get wrong:
 Long, quiet builds survive a dropped connection: the command runs detached with a heartbeat watcher that re-attaches if the stream dies. The real exit code is preserved.
 
 For the full flag table, the egress presets, the enforcement caveats, fanout, and the OOM/disk/bandwidth traps on heavy builds → **`references/offload-and-egress.md`**.
+
+### Exec — remote code execution for one file
+
+Code you would rather not run on the user's machine — untrusted, generated, or just not yours to run locally — goes to `exec`: it writes the file into a fresh box, runs it with the right toolchain, and destroys the box.
+
+```bash
+cos exec -i input.txt solution.py arg1          # stdin from a file, args after the file
+cos exec -t 10 -N suspect.js                     # 10 s limit, no network at all
+cos exec -l go - <<'GO'
+package main
+import "fmt"
+func main() { fmt.Println("hi") }
+GO
+```
+
+Languages: `py js mjs cjs ts go sh rb c cpp rs` (from the extension, or `-l`). Everything after `<file>` reaches the program unchanged. stdout/stderr pass through, the exit code is the program's, exit 124 means the `-t` limit (default 120 s) killed it, and `cos: exit=N time=Ns` goes to stderr. Egress is unrestricted by default like `offload`; `-N` denies all of it (enforced by an IP rule, so it applies immediately). More than one file, or dependencies to install → `offload`.
 
 ### Fanout — same input, many boxes, in parallel
 
