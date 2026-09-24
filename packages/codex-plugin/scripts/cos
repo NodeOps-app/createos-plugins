@@ -462,6 +462,87 @@ example:
 EOF
 }
 
+# ─────────────────────────────────────────────────── run one untrusted source file
+# Egress stays open by default (snippets often call APIs). -N denies all: any rule flips
+# CreateOS to deny-by-default and an IP rule is enforced at once (hostname rules are not),
+# so one unroutable TEST-NET-1 address allows nothing.
+DENY_ALL_EGRESS=192.0.2.1/32
+cmd_exec(){ # no _norm: it would rewrite the program's own --flags after <file>; getopts stops at <file>
+  local shape=s-1vcpu-1gb rootfs=devbox:1 lang="" stdin="" to=120 deny=0
+  COS_EGRESS=(); local -a _d; local OPTIND=1 o doms d
+  while getopts "s:r:l:i:t:e:p:v:Nh" o; do case $o in
+    s) shape=$OPTARG;; r) rootfs=$OPTARG;; l) lang=$OPTARG;; i) stdin=$OPTARG;; t) to=$OPTARG;;
+    v) add_env "$OPTARG";;
+    e) COS_EGRESS+=(--egress "$OPTARG");;
+    p) doms=$(egress_preset "$OPTARG") || die "unknown egress preset '$OPTARG' (have: $EGRESS_PRESETS)"
+       read -ra _d <<<"$doms"; for d in "${_d[@]}"; do COS_EGRESS+=(--egress "$d"); done;;
+    N) deny=1;;
+    h) exec_usage; exit 0;;
+    *) exec_usage >&2; exit 2;; esac; done
+  shift $((OPTIND-1))
+  if [ $# -lt 1 ]; then exec_usage; exit 0; fi
+  local file=$1; shift
+  numeric "$to" || die "-t wants whole seconds, got '$to'"
+  [ -z "$stdin" ] || [ -f "$stdin" ] || die "no such stdin file: $stdin"
+  local src=$file
+  if [ "$file" = - ]; then src=$(mktemp); cat >"$src"; else [ -f "$file" ] || die "no such file: $file"; fi
+  [ -n "$lang" ] || lang=${file##*.}
+  [ "$lang" != - ] && [ "$lang" != "$file" ] || die "cannot tell the language — pass -l py|js|mjs|cjs|ts|go|sh|rb|c|cpp|rs"
+
+  local main run
+  case "$lang" in
+    py|python)      main=main.py;  run="python3 main.py";;
+    js|node)        main=main.js;  run="node main.js";;
+    mjs)            main=main.mjs; run="node main.mjs";;
+    cjs)            main=main.cjs; run="node main.cjs";;
+    ts|typescript)  main=main.ts;  run="bun main.ts";;
+    go)             main=main.go;  run="go run main.go";;
+    sh|bash)        main=main.sh;  run="bash main.sh";;
+    rb|ruby)        main=main.rb;  run="ruby main.rb";;
+    c)              main=main.c;   run="gcc -O2 -o main main.c && ./main";;
+    cpp|cc|cxx)     main=main.cpp; run="g++ -O2 -o main main.cpp && ./main";;
+    rs|rust)        main=main.rs;  run="rustc -O -o main main.rs && ./main";;
+    *) die "unsupported language '$lang' — py|js|mjs|cjs|ts|go|sh|rb|c|cpp|rs (anything else: cos offload)";;
+  esac
+  local a; for a in "$@"; do run="$run $(printf '%q' "$a")"; done
+
+  [ "$deny" = 1 ] && { COS_EGRESS=(--egress "$DENY_ALL_EGRESS"); echo "cos: egress DENIED (-N)" >&2; }
+
+  OFFLOAD_ID=$(create_box "cos-x-$$-${RANDOM}" "$shape" "$rootfs")
+  KEEP=0; trap on_offload_exit EXIT
+  wait_running "$OFFLOAD_ID" 30 || die "box $OFFLOAD_ID not running after 30s"
+  "$CLI" sandbox push "$OFFLOAD_ID" "$src" "/work/$main" >/dev/null 2>&1 || die "push failed"
+  [ "$file" = - ] && rm -f "$src"
+  local in=/dev/null
+  if [ -n "$stdin" ]; then
+    "$CLI" sandbox push "$OFFLOAD_ID" "$stdin" /work/.stdin >/dev/null 2>&1 || die "stdin push failed"; in=.stdin
+  fi
+
+  # ponytail: buffered exec, fine for snippets; a job that outlives the stream belongs in offload (keepalive)
+  local t0 rc=0; t0=$(date +%s)
+  "$CLI" sandbox exec "$OFFLOAD_ID" -- bash -lc "cd /work && timeout -k 5 $to bash -c $(printf '%q' "$run") <$in" || rc=$?
+  echo "cos: exit=$rc time=$(( $(date +%s) - t0 ))s$([ "$rc" = 124 ] && echo " (killed: -t ${to}s timeout)")" >&2
+  return "$rc"
+}
+exec_usage(){ cat <<'EOF'
+cos exec — run one source file (untrusted/ad-hoc code) in a throwaway box (auto-destroyed).
+  cos exec [flags] <file|-> [args...]      ('-' reads the code from stdin; needs -l)
+flags:
+  -l lang      py | js | mjs | cjs | ts | go | sh | rb | c | cpp | rs   (default: from the file extension)
+  -i file      feed this local file to the program's stdin
+  -t secs      wall-clock limit, default 120 (exit 124 on timeout)
+  -s shape   -r rootfs   -v KEY[=VAL]
+  -N           deny ALL egress (box reaches nothing) — for code you suspect of exfiltration
+  -e <domain> / -p <preset>   allow just these hosts   (default: unrestricted egress)
+stdout/stderr pass through; exit code is the program's; 'cos: exit=N time=Ns' goes to stderr.
+example:
+  cos exec -i input.txt solution.py
+  cos exec -l py - <<'PY'
+  print(sum(range(10)))
+  PY
+EOF
+}
+
 # ───────────────────────────────────────────────────────────── reusable project box
 cmd_up(){
   _norm "$@"; set -- ${NORMA[@]+"${NORMA[@]}"}
@@ -1339,6 +1420,7 @@ main_usage(){ cat <<'EOF'
 cos — CreateOS sandbox as remote compute.  (run `cos install` to put `cos` on PATH)
   cos auth                            check sign-in (CREATEOS_API_KEY, or `createos login` in a real terminal)
   cos offload [flags] <dir> <cmd>     one-shot: stage→run(keepalive)→pull→destroy   (cos offload -h for flags)
+  cos exec [flags] <file|-> [args]     run one untrusted source file (py|js|ts|go|sh|rb|c|cpp|rs); -N denies egress  (cos exec -h)
   cos agent [flags] <agent> <dir> <prompt>   run claude|codex|opencode|pi|cursor on your code in a box
                                       against OpenRouter / any OpenAI- or Anthropic-compatible provider (cos agent -h)
   cos fanout [-j N][flags] <dir> <cmd>...   run each <cmd> in its own throwaway box, in parallel  (cos fanout -h)
@@ -1377,6 +1459,7 @@ case "$sub" in
   install)  cmd_install "$@";;
   auth)     cmd_auth "$@";;
   offload)  cmd_offload "$@";;
+  exec)     cmd_exec "$@";;
   agent)    cmd_agent "$@";;
   fanout)   cmd_fanout "$@";;
   shell)    cmd_shell "$@";;
