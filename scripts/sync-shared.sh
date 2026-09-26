@@ -26,7 +26,6 @@ PAIRS=(
   "packages/claude-code-plugin/skills/using-createos-sandbox/references/lifecycle-and-images.md:packages/codex-plugin/skills/using-createos-sandbox/references/lifecycle-and-images.md"
   "packages/claude-code-plugin/skills/using-createos-sandbox/references/networking.md:packages/codex-plugin/skills/using-createos-sandbox/references/networking.md"
   "packages/claude-code-plugin/skills/using-createos-sandbox/references/offload-and-egress.md:packages/codex-plugin/skills/using-createos-sandbox/references/offload-and-egress.md"
-  "packages/shared/sandbox-engine.ts:packages/opencode-plugin/src/sandbox-engine.ts"
   "packages/shared/sandbox-engine.ts:packages/pi-extension/src/sandbox-engine.ts"
 )
 

@@ -1,221 +1,184 @@
-# @createos/opencode
+# CreateOS Sandbox for OpenCode V2
 
-OpenCode plugin that runs all tool calls inside a remote
-[CreateOS Sandbox](https://createos.sh) while the agent runs locally.
+Native OpenCode V2 plugin with explicit `sandbox_*` tools and optional remote execution of OpenCode's shell and file tools. Uses `Plugin.define`, tool transforms, session context hooks, commands, durable storage, and an importable RPC contract from `@opencode/plugin` **2.0.16**.
 
-Every operation shells out to the `createos` CLI, except computer-use — the CLI
-has no `sandbox computer` command yet, so those calls go straight to the REST
-API. Auth is handled by `createos login`.
+## Requirements
 
-```
-OpenCode agent (local)  →  createos CLI  →  CreateOS API  →  Sandbox (remote VM)
-```
+- OpenCode V2 with the 2.0.16 plugin API, running on macOS or Linux.
+- The `createos` CLI installed on the **OpenCode server's** PATH. The managed-process and desktop commands used here are present in CLI v0.0.29.
+- Authenticate on that server with `createos login`, or set `CREATEOS_API_KEY` in its environment.
+- Guest image with Bash, Python 3.9+, tar, and ripgrep for file tools/search. Default: `devbox:1`.
+- Host Git and tar for project snapshots; SSH keygen and the CLI's sync dependencies for watch mode.
 
-## Install
+The plugin uses CLI authentication for every operation, including desktop/computer use. Credentials stay on the server; do not put keys in plugin options or prompts. When changing server environment variables, restart the OpenCode service so it inherits them.
 
-### From npm (global — works from any project)
+## Install from this checkout
 
-```bash
-opencode plugin @createos/opencode --global
-```
-
-### Local development
-
-Drop the plugin shim into your project:
-
-```bash
-mkdir -p .opencode/plugins
-cat > .opencode/plugins/createos.ts << 'EOF'
-export { CreateOSPlugin } from "../../packages/opencode-plugin/index.ts"
-EOF
+```sh
+cd packages/opencode-plugin
+bun install
 ```
 
-Then install dependencies in the package directory:
+Add the package directory to `opencode.jsonc`. Relative paths resolve from the configuration file:
 
-```bash
-cd packages/opencode-plugin && bun install
+```jsonc
+{
+  "$schema": "https://opencode.ai/config.json",
+  "plugins": ["./packages/opencode-plugin"],
+}
 ```
 
-## Prerequisites
+For a remote development session:
 
-1. **createos CLI** — auto-installed on first use, or manually:
+```jsonc
+{
+  "$schema": "https://opencode.ai/config.json",
+  "plugins": [
+    {
+      "package": "./packages/opencode-plugin",
+      "options": {
+        "mode": "remote",
+        "sync": "once",
+        "shape": "s-2vcpu-2gb",
+        "rootfs": "devbox:1",
+        "persist": true,
+      },
+    },
+  ],
+}
+```
 
-   ```bash
-   curl -sfL https://raw.githubusercontent.com/NodeOps-app/createos-cli/main/install.sh | sh
-   ```
+After publication, the package target is `@createos/opencode@2.0.0`:
 
-2. **Login** (one-time, browser OAuth):
-   ```bash
-   createos login
-   ```
+```sh
+opencode plugin add @createos/opencode@2.0.0
+```
 
-## How it works
+Use the same server-plugin configuration with an installation whose executable is named `opencode2`; substitute that executable in CLI commands.
 
-1. Plugin loads and registers 38 `sandbox_*` tools
-2. System prompt is injected into all agents telling them to use `sandbox_exec`
-   for all shell commands instead of the built-in `bash` tool
-3. On first tool call, a sandbox is created automatically
-4. All subsequent `sandbox_exec` calls run inside that sandbox
-5. Sandbox is destroyed when the session ends
+## Execution modes
+
+**Local (default):** native tools keep their existing executors. Explicit sandbox tools are available. Loading the plugin and listing its tools allocate no compute.
+
+**Remote:** the first routed tool call lazily provisions one sandbox for that session. Concurrent first calls share the allocation; different sessions receive different sandboxes. The plugin preserves the native tools' input schemas and options while routing these tool IDs:
+
+| Operation       | Tool IDs                |
+| --------------- | ----------------------- |
+| Shell           | `shell`, `bash`         |
+| Read/write/edit | `read`, `write`, `edit` |
+| Patch           | `patch`, `apply_patch`  |
+| Search          | `glob`, `grep`          |
+
+Remote failures fail the tool call. They never invoke the local executor. Relative paths resolve under the sandbox working directory; file-tool absolute paths under the host project map to that directory. Shell command strings are executed as supplied, from the remote working directory.
+
+This routes registered agent tools. OpenCode's server, VCS, LSP, browser, MCP tools, interactive terminal infrastructure, and other plugins keep their own execution environments. A shell hook alone cannot relocate all of those services.
+
+Use `sandbox_process_start` for persistent/background commands. Routed shell calls with `background: true` direct the agent to that tool.
+
+Routed shell calls preserve `timeout: 0` as no deadline; session cancellation still terminates the remote process tree.
 
 ## Configuration
 
-Environment variables:
+Environment overrides plugin options, which override defaults. Unknown option keys and invalid values fail plugin setup.
 
-| Variable           | Default       | Description                          |
-| ------------------ | ------------- | ------------------------------------ |
-| `CREATEOS_ENABLED` | `true`        | Set to `false` to disable the plugin |
-| `CREATEOS_SHAPE`   | `s-2vcpu-2gb` | Sandbox VM size                      |
-| `CREATEOS_ROOTFS`  | `devbox:1`    | Base image for the sandbox           |
+| Option       | Environment variable  | Default                                |
+| ------------ | --------------------- | -------------------------------------- |
+| `mode`       | `CREATEOS_MODE`       | `local`; alternatively `remote`        |
+| `shape`      | `CREATEOS_SHAPE`      | `s-2vcpu-2gb`                          |
+| `rootfs`     | `CREATEOS_ROOTFS`     | `devbox:1`                             |
+| `cwd`        | `CREATEOS_CWD`        | `/root/workspace`                      |
+| `network`    | `CREATEOS_NETWORK`    | unset                                  |
+| `autoPause`  | `CREATEOS_AUTO_PAUSE` | `30m`                                  |
+| `sync`       | `CREATEOS_SYNC`       | `none`; alternatively `once`           |
+| `persist`    | `CREATEOS_PERSIST`    | `true`                                 |
+| `timeout`    | `CREATEOS_TIMEOUT`    | `120000` milliseconds; maximum 3600000 |
+| `syncSkills` | —                     | `true`                                 |
 
-## Offloading vs. driving a box
+`CREATEOS_BIN` selects a different CLI executable. Plugin options never contain API credentials.
 
-Two shapes of work, two tools. Getting this wrong is the most common mistake:
+### Project and skill files
 
-| Work                                                         | Tool                                                      |
-| ------------------------------------------------------------ | --------------------------------------------------------- |
-| Untrusted code or any ad-hoc script — one program's source   | `sandbox_run_code` — stdout, stderr, exit code; box destroyed |
-| Has a finish line — a build, a test suite, a script          | `sandbox_offload` — one call, box destroyed afterwards    |
-| Several variants of that at once — shards, a config matrix   | `sandbox_fanout` — one throwaway box per command          |
-| Outlives one command — a dev server, a watcher, a session    | `sandbox_create` + `sandbox_exec`, then `sandbox_destroy` |
+- `sync: "none"` creates an empty remote working directory.
+- `sync: "once"` copies the project before the first operation. It does not overwrite it again on reattachment.
+- Snapshots use Git's tracked/unignored file list in repositories and tar elsewhere. They exclude VCS metadata, `node_modules`, `.venv`, `.env*`, `.ssh`, `.aws`, `.createos`, `.opencode`, and private-key patterns. Treat exclusions as convenience filters, not secret discovery.
+- Local skill bundles with a `SKILL.md` path are mirrored when the sandbox is attached. Original absolute paths remain usable by bundled scripts; project-relative file-tool mappings are also populated. Virtual/built-in skills without local bundles need no transfer.
+- `sandbox_sync` supports `once`, `one-way`, and explicit `two-way` modes. Watchers return a transport ID and are stopped on plugin unload. `sandbox_transport_stop` stops them early.
+- Remote-only changes stay remote unless an explicit pull, artifact download, or two-way sync retrieves them.
 
-`sandbox_offload` is not a convenience wrapper over create + exec. It carries the
-things a hand-rolled sequence silently drops: egress restricted to the domains a
-build actually needs, a keepalive so a dropped stream does not kill a long build,
-guaranteed destruction even when the command throws, and staging excludes that
-keep `.git`, `node_modules`, `target` and large media off the wire.
+### Ownership and cleanup
 
-For questions about CreateOS Sandbox itself, the agent is told to fetch the live docs:
-every page listed under `/Sandbox/` in <https://createos.sh/docs/llms.txt> is raw
-markdown at `https://createos.sh/docs<path>.md`.
+With `persist: true`, session bindings live in OpenCode's plugin storage, scoped by location and session ID. Plugin reloads reattach to that sandbox, resuming it if paused. A disconnected UI, an idle session, or plugin unload does not destroy it. Auto-pause limits idle compute, but does not delete the sandbox.
 
-## Tool inventory (39 tools)
+`/sandbox` reports the current in-memory binding. `/sandbox-release` destroys the session's owned sandbox and clears its binding. `/sandbox-release forget` clears only the binding, useful after external deletion or when retaining the old sandbox deliberately. Release refuses while that session has active operations. The next remote operation creates a fresh sandbox.
 
-### Offload engine
+With `persist: false`, plugin unload cancels in-flight operations and destroys the session sandboxes it owns. A hard process kill cannot run cleanup; inspect remaining sandboxes with the CLI after a server crash.
 
-| Tool                 | Description                                                                  |
-| -------------------- | ---------------------------------------------------------------------------- |
-| `sandbox_offload`    | Stage a directory, run a command, pull artifacts, destroy the box            |
-| `sandbox_fanout`     | Run each of several commands in its own throwaway box, in parallel           |
-| `sandbox_run_code`   | Remote code execution: run one program (py/js/ts/go/sh/rb/c/cpp/rs) with stdin, args and a timeout; egress open unless `egress_deny_all`/presets |
+Sandboxes created explicitly with `sandbox_create`, forks, and `sandbox_process_start` are deliberate persistent resources. Destroy or stop them explicitly. One-shot jobs have their own cleanup policy below.
 
-### Desktop / computer use
+## Tool catalog
 
-| Tool                 | Description                                                                  |
-| -------------------- | ---------------------------------------------------------------------------- |
-| `sandbox_desktop`    | Mint a live noVNC URL for a `desktop:1` box so the user can watch or drive it |
-| `sandbox_computer`   | One computer-use action: screen, cursor, windows, move, click, type, key, open |
-| `sandbox_screenshot` | Capture the desktop as a PNG and return its local path                        |
+All tools are in the `sandbox` namespace and enabled for Code Mode. Effective names are `sandbox_<name>`.
 
+| Group             | Names                                                                                                                    |
+| ----------------- | ------------------------------------------------------------------------------------------------------------------------ |
+| Session/lifecycle | `status`, `create`, `info`, `list`, `pause`, `resume`, `fork`, `destroy`                                                 |
+| Execution         | `exec`, `run_code`, `offload`, `fanout`                                                                                  |
+| Files             | `read`, `write`, `edit`, `patch`, `glob`, `grep`, `push`, `pull`                                                         |
+| Processes         | `process_start`, `process_list`, `process_get`, `process_output`, `process_stop`, `process_input`, `process_close_stdin` |
+| Transport/ingress | `sync`, `tunnel`, `transport_stop`, `ingress`, `preview_url`                                                             |
+| Configuration     | `shapes`, `images`, `firewall`, `bandwidth`                                                                              |
+| Networks          | `network_create`, `network_list`, `network_show`, `network_attach`, `network_detach`, `network_delete`                   |
+| Disks             | `disk_create`, `disk_list`, `disk_show`, `disk_attach`, `disk_detach`, `disk_delete`                                     |
+| Devices           | `device_register`, `device_status`, `vpn_up`                                                                             |
+| Desktop           | `desktop`, `computer`, `screenshot`                                                                                      |
 
-### Execute & Files
+`network_attach`/`network_detach` accept either a sandbox or a registered device as `member`. `disk_create` takes **environment variable names** for S3 credentials. `vpn_up` returns the terminal command because connecting the host VPN requires interactive/elevated access.
 
-| Tool           | Description                                                            |
-| -------------- | ---------------------------------------------------------------------- |
-| `sandbox_exec` | Run a shell command inside the sandbox. **Use this for ALL commands.** |
-| `sandbox_pull` | Read/download a file from the sandbox                                  |
-| `sandbox_push` | Write/upload a file to the sandbox                                     |
+### Execution and offload
 
-### Sandbox lifecycle
+- `exec` uses managed process start/wait/output. Cancellation or timeout explicitly stops the remote process tree. Output includes the process ID, remote exit code, separate stdout/stderr, and truncation state.
+- CLI output is bounded to 2 MiB per invocation. The server's managed-process journal is also bounded; older output may have expired before retrieval.
+- `run_code` supports `py`, `js`, `mjs`, `cjs`, `ts`, `sh`, `go`, `rb`, `c`, `cpp`, and `rs`. The selected guest image must contain the corresponding runtime/compiler.
+- `offload` snapshots a project to `/work`. `out` optionally retrieves **one file** under `/work`, at the same relative path locally. Retrieval failure keeps the sandbox containing the artifact.
+- Uncertain execution retains the sandbox for inspection; `keep_on_fail` optionally retains ordinary nonzero exits. Retention and cleanup failures name the sandbox explicitly.
+- `fanout` accepts 1–25 commands and bounds concurrency (`jobs`, default 2). Each command gets its own project copy. It does not automatically publish services.
+- Allocation is not retried or abandoned mid-response. If cancellation occurs while allocating, the returned ID is handled before cancellation completes.
 
-| Tool              | Description                                      |
-| ----------------- | ------------------------------------------------ |
-| `sandbox_info`    | Status, IP, shape, region, ingress URL           |
-| `sandbox_create`  | Create an additional sandbox (multi-node setups) |
-| `sandbox_list`    | List all sandboxes                               |
-| `sandbox_pause`   | Pause sandbox, saving state                      |
-| `sandbox_resume`  | Resume a paused sandbox                          |
-| `sandbox_fork`    | Clone a paused sandbox                           |
-| `sandbox_destroy` | Permanently delete a sandbox                     |
+### File behavior
 
-### Config
+Text reads/edits are limited to 1 MiB per file, with at most 2000 displayed read lines. Writes use atomic sibling-file replacement. File-tool calls serialize per sandbox; external shell processes can still modify the same files independently.
 
-| Tool                | Description                 |
-| ------------------- | --------------------------- |
-| `sandbox_ingress`   | Toggle public HTTPS URL     |
-| `sandbox_firewall`  | Set egress firewall rules   |
-| `sandbox_bandwidth` | Check bandwidth usage/quota |
-| `sandbox_shapes`    | List available VM sizes     |
-| `sandbox_images`    | List available base images  |
+Edits require an exact unique match unless `replaceAll` is set. Patches support add, delete, update, and move sections with exact, unique line context. All hunks validate before mutation; individual writes are atomic, but a multi-file patch is not a filesystem transaction. Binary files use explicit transfers rather than text editing.
 
-### Ports & connectivity
+### Networking and desktop
 
-| Tool                  | Description                                       |
-| --------------------- | ------------------------------------------------- |
-| `sandbox_preview_url` | Get a public HTTPS URL for a port (preferred)     |
-| `sandbox_tunnel`      | Forward a sandbox port to localhost               |
-| `sandbox_sync`        | Bidirectional file sync between local and sandbox |
+Egress is unrestricted by default. `firewall` accepts IP/CIDR rules only: repository-recorded live checks found that hostname rules were accepted but not enforced. Address restrictions also have control-plane exceptions, including link-local services; this plugin does not claim complete network isolation.
 
-### Networks (multi-node)
+Preview URLs and newly spawned tunnels are returned as **unverified**. Enable ingress explicitly and health-check the service before sharing it. Desktop access enables ingress and returns the CLI's noVNC connection information. Screenshots are returned as inline PNG file content so clients do not need access to server-local paths.
 
-| Tool                     | Description                         |
-| ------------------------ | ----------------------------------- |
-| `sandbox_network_create` | Create a private network            |
-| `sandbox_network_list`   | List networks                       |
-| `sandbox_network_show`   | Show network details and member IPs |
-| `sandbox_network_attach` | Attach sandbox to a network         |
-| `sandbox_network_detach` | Detach sandbox from a network       |
-| `sandbox_network_delete` | Delete a network                    |
+## RPC
 
-### Persistent storage (S3 disks)
+Import the contract independently of the implementation:
 
-| Tool                  | Description                               |
-| --------------------- | ----------------------------------------- |
-| `sandbox_disk_create` | Register an S3 bucket as a mountable disk |
-| `sandbox_disk_list`   | List registered disks                     |
-| `sandbox_disk_show`   | Show disk details                         |
-| `sandbox_disk_delete` | Delete a disk registration                |
-| `sandbox_disk_attach` | Mount a disk into a sandbox               |
-| `sandbox_disk_detach` | Unmount a disk from a sandbox             |
+```ts
+import { CreateOS } from "@createos/opencode/rpc";
 
-### Device VPN (direct IP access)
-
-| Tool                      | Description                                         |
-| ------------------------- | --------------------------------------------------- |
-| `sandbox_device_register` | One-time device registration                        |
-| `sandbox_device_status`   | Check device registration status                    |
-| `sandbox_device_attach`   | Attach device to a network                          |
-| `sandbox_device_detach`   | Detach device from a network                        |
-| `sandbox_vpn_up`          | Returns the `sudo` command for user to run manually |
-
-## Differences from the Pi extension
-
-This plugin ports the [Pi extension](../pi-extension) (`feat/pi` branch) to
-OpenCode. The core sandbox tools and CLI wrappers are identical, but OpenCode's
-plugin API has limitations:
-
-| Capability       | Pi                                                     | OpenCode                                                            |
-| ---------------- | ------------------------------------------------------ | ------------------------------------------------------------------- |
-| Tool replacement | Replaces built-in `bash/read/write/edit` transparently | Cannot replace — uses system prompt to direct LLM to `sandbox_exec` |
-| CLI flags        | `pi --createos`                                        | Not supported — use `CREATEOS_ENABLED` env var                      |
-| TUI integration  | Status bar, notifications                              | Not available to plugins                                            |
-| Slash commands   | `/sandbox`, `/network`, `/device`                      | Not supported                                                       |
-| Global install   | `pi install npm:@createos/pi`                          | `opencode plugin @createos/opencode --global`                       |
-| Shell access     | `pi.exec()`                                            | `child_process.execSync` (OpenCode's `$` had routing issues)        |
-
-## Architecture
-
-```
-packages/opencode-plugin/
-├── index.ts           # Plugin entry — exports CreateOSPlugin
-├── package.json       # npm: @createos/opencode
-├── README.md          # This file
-├── tsconfig.json
-└── src/
-    ├── cli.ts             # All createos CLI wrappers (execSync-based)
-    ├── sandbox-engine.ts  # copy — canonical lives in packages/shared/
-    ├── tools.ts           # 38 tool definitions using tool() + tool.schema.*
-    └── util.ts            # shellQuote, shortId, joinPath
+const sandbox = client.rpc(CreateOS);
+await sandbox.status({ sessionID });
+await sandbox.release({ sessionID, destroy: true });
 ```
 
-## Shared engine
+Use an authenticated OpenCode client targeted at the plugin's location. RPC validates the session's location. `release({ destroy: false })` forgets the binding while leaving the sandbox allocated.
 
-`src/sandbox-engine.ts` is a copy. The canonical file is
-`packages/shared/sandbox-engine.ts`; `scripts/sync-shared.sh` writes the copies
-and CI fails on drift, so edit the canonical one. It is a TypeScript port of the
-`cos` bash driver that the Claude Code and Codex plugins run — the two are meant
-to behave identically, so a change to one belongs in the other.
+## Development
 
-## License
+```sh
+bun install
+bun run check
+bun test
+bun pm pack
+```
 
-Apache-2.0
+Tests exercise native-tool routing, initialization races, persistence, cancellation, artifact retention, cleanup failures, and real guest file operations. They use fake CreateOS transport responses and require no sandbox credentials. Live provisioning and a real OpenCode server require a separate integration smoke test, including a model-driven call to exercise OpenCode's result validation. Routed tools return remote results as content and sandbox metadata; their host-only structured output declarations are removed because they describe local resources and shell jobs.
+
+Source modules: `plugin.ts` (V2 registration), `runtime.ts` (ownership), `cli.ts` (transport/processes), `tools.ts` (catalog/routing), `files.ts` + `guest.py` (file operations), `jobs.ts` (one-shot work), `sync.ts` (snapshots), `background.ts` (local transports), and `rpc.ts` (public contract).
