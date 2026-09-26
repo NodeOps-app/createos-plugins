@@ -59,21 +59,21 @@ auth preflight.
 
 Run `cos help` for the full list.
 
-| Verb                          | What                                                          |
-| ----------------------------- | ------------------------------------------------------------- |
-| `cos offload <dir> '<cmd>'`   | one-shot: stage → run (keepalive) → pull → destroy            |
-| `cos fanout <dir> '<cmd>'...` | each command in its own throwaway box, in parallel            |
-| `cos shell`                   | instant throwaway interactive Linux, destroyed on exit        |
-| `cos up` / `run` / `down`     | reusable project box, one per git root                        |
-| `cos sync`                    | background file sync into the project box                     |
-| `cos pause` / `resume`        | park a warm box at zero compute cost, restore it intact       |
-| `cos fork`                    | snapshot the project box into an independent clone            |
-| `cos tunnel` / `expose`       | box port → `127.0.0.1`, or a public HTTPS URL                 |
-| `cos cluster`                 | N boxes on one private network, addressable by name           |
-| `cos disk`                    | BYO S3 bucket mounts                                          |
-| `cos vpn`                     | WireGuard into your private networks                          |
-| `cos template`                | build a custom rootfs from a Dockerfile                       |
-| `cos desktop` / `computer`    | graphical box + noVNC URL; drive it by screenshot/click/type  |
+| Verb                          | What                                                         |
+| ----------------------------- | ------------------------------------------------------------ |
+| `cos offload <dir> '<cmd>'`   | one-shot: stage → run (keepalive) → pull → destroy           |
+| `cos fanout <dir> '<cmd>'...` | each command in its own throwaway box, in parallel           |
+| `cos shell`                   | instant throwaway interactive Linux, destroyed on exit       |
+| `cos up` / `run` / `down`     | reusable project box, one per git root                       |
+| `cos sync`                    | background file sync into the project box                    |
+| `cos pause` / `resume`        | park a warm box at zero compute cost, restore it intact      |
+| `cos fork`                    | snapshot the project box into an independent clone           |
+| `cos tunnel` / `expose`       | box port → `127.0.0.1`, or a public HTTPS URL                |
+| `cos cluster`                 | N boxes on one private network, addressable by name          |
+| `cos disk`                    | BYO S3 bucket mounts                                         |
+| `cos vpn`                     | WireGuard into your private networks                         |
+| `cos template`                | build a custom rootfs from a Dockerfile                      |
+| `cos desktop` / `computer`    | graphical box + noVNC URL; drive it by screenshot/click/type |
 
 ## Architecture
 
@@ -91,7 +91,7 @@ packages/codex-plugin/
 └── README.md
 ```
 
-`scripts/session-start.sh` is the one file that is deliberately *not* a copy:
+`scripts/session-start.sh` is the one file that is deliberately _not_ a copy:
 Codex sets no `CLAUDE_PLUGIN_ROOT`, so it resolves the driver relative to its own
 location. The wire format is identical — Codex parses
 `hookSpecificOutput.additionalContext` exactly like Claude Code does.
@@ -102,12 +102,12 @@ driver and no skill, silently. Verified against codex-cli 0.153.4.
 
 ## Differences from the Pi and OpenCode plugins
 
-| Capability       | Pi                            | OpenCode                             | Codex                                |
-| ---------------- | ----------------------------- | ------------------------------------ | ------------------------------------ |
-| Integration      | `pi.registerTool()`           | `tool()` in plugin                   | skill + hooks over the `cos` driver  |
-| Custom tools     | 34 registered tools           | 38 registered tools                  | none — the agent's own shell         |
-| Slash commands   | no                            | no                                   | no (Claude Code plugin has 20)       |
-| Install          | `pi install npm:@createos/pi` | `opencode plugin @createos/opencode` | `codex plugin add createos-sandbox-codex --marketplace createos` |
+| Capability     | Pi                            | OpenCode                             | Codex                                                            |
+| -------------- | ----------------------------- | ------------------------------------ | ---------------------------------------------------------------- |
+| Integration    | `pi.registerTool()`           | `tool()` in plugin                   | skill + hooks over the `cos` driver                              |
+| Custom tools   | 34 registered tools           | 38 registered tools                  | none — the agent's own shell                                     |
+| Slash commands | no                            | no                                   | no (Claude Code plugin has 20)                                   |
+| Install        | `pi install npm:@createos/pi` | `opencode plugin @createos/opencode` | `codex plugin add createos-sandbox-codex --marketplace createos` |
 
 ## License
 

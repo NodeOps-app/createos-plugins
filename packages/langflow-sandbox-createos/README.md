@@ -4,14 +4,14 @@ Three ways to run [Langflow](https://github.com/langflow-ai/langflow) work insid
 disposable [CreateOS](https://createos.sh) Firecracker microVMs. One `pip
 install` ships all three; each is opted into separately.
 
-| Surface | Entry point | What moves into a microVM | Enable with |
-|---|---|---|---|
-| **Sandbox backend** | `lfx.sandbox_backends` | The **Python Interpreter** component's code | `LANGFLOW_SANDBOX_BACKEND=createos` (+ allowlist) |
-| **Components** | `langflow.extensions` | Whatever you put in a **CreateOS Sandbox** node | drag it onto the canvas |
-| **Executor** | `lfx.executors` | An entire flow graph | `LANGFLOW_EXECUTOR_KIND=createos` |
+| Surface             | Entry point            | What moves into a microVM                       | Enable with                                       |
+| ------------------- | ---------------------- | ----------------------------------------------- | ------------------------------------------------- |
+| **Sandbox backend** | `lfx.sandbox_backends` | The **Python Interpreter** component's code     | `LANGFLOW_SANDBOX_BACKEND=createos` (+ allowlist) |
+| **Components**      | `langflow.extensions`  | Whatever you put in a **CreateOS Sandbox** node | drag it onto the canvas                           |
+| **Executor**        | `lfx.executors`        | An entire flow graph                            | `LANGFLOW_EXECUTOR_KIND=createos`                 |
 
 They are complementary. The backend hardens an existing flow silently; the
-component makes the sandbox a thing you build *with*; the executor moves the
+component makes the sandbox a thing you build _with_; the executor moves the
 whole graph off the host.
 
 One throwaway VM per execution, on the CreateOS control plane — so the Langflow
@@ -19,12 +19,12 @@ host needs no KVM/HVF device of its own. This is what makes hardware-isolated
 code execution possible on managed platforms, containers without
 `/dev/kvm`, and Apple Silicon CI.
 
-| | `none` (default) | `exec-sandbox` (built in) | `createos` (this package) |
-|---|---|---|---|
-| Where code runs | Langflow process | QEMU microVM on the Langflow host | Firecracker microVM on CreateOS |
-| Needs a local hypervisor | — | yes (KVM / HVF) | **no** |
-| Isolation | none | hardware-virtualized | hardware-virtualized |
-| Cold start | — | seconds (image download on first run) | ~200 ms create-to-first-command |
+|                          | `none` (default) | `exec-sandbox` (built in)             | `createos` (this package)       |
+| ------------------------ | ---------------- | ------------------------------------- | ------------------------------- |
+| Where code runs          | Langflow process | QEMU microVM on the Langflow host     | Firecracker microVM on CreateOS |
+| Needs a local hypervisor | —                | yes (KVM / HVF)                       | **no**                          |
+| Isolation                | none             | hardware-virtualized                  | hardware-virtualized            |
+| Cold start               | —                | seconds (image download on first run) | ~200 ms create-to-first-command |
 
 ## Install
 
@@ -55,22 +55,22 @@ to in-process `exec`.
 
 Langflow's own settings apply unchanged:
 
-| Variable | Default | Effect here |
-|---|---|---|
-| `LANGFLOW_SANDBOX_TIMEOUT_SECONDS` | `30` | Wall clock the guest program gets, enforced in-VM by `timeout(1)` |
-| `LANGFLOW_SANDBOX_MEMORY_MB` | `192` | A **floor**, not the VM size — see *Shapes* below |
-| `LANGFLOW_SANDBOX_ALLOW_NETWORK` | `false` | `false` installs an unroutable egress allowlist; `true` with no domains is **unrestricted** |
-| `LANGFLOW_SANDBOX_ALLOWED_DOMAINS` | empty | **Not supported — refused.** CreateOS does not enforce hostname rules; see below |
+| Variable                           | Default | Effect here                                                                                 |
+| ---------------------------------- | ------- | ------------------------------------------------------------------------------------------- |
+| `LANGFLOW_SANDBOX_TIMEOUT_SECONDS` | `30`    | Wall clock the guest program gets, enforced in-VM by `timeout(1)`                           |
+| `LANGFLOW_SANDBOX_MEMORY_MB`       | `192`   | A **floor**, not the VM size — see _Shapes_ below                                           |
+| `LANGFLOW_SANDBOX_ALLOW_NETWORK`   | `false` | `false` installs an unroutable egress allowlist; `true` with no domains is **unrestricted** |
+| `LANGFLOW_SANDBOX_ALLOWED_DOMAINS` | empty   | **Not supported — refused.** CreateOS does not enforce hostname rules; see below            |
 
 Plus this package's own:
 
-| Variable | Default | Effect |
-|---|---|---|
-| `CREATEOS_SANDBOX_API_KEY` | — | **Required.** Falls back to `CREATEOS_API_KEY` |
-| `CREATEOS_SANDBOX_BASE_URL` | `https://api.sb.createos.sh` | Control-plane endpoint |
-| `CREATEOS_SANDBOX_ROOTFS` | `devbox:1` | Guest image |
-| `CREATEOS_SANDBOX_SHAPE` | auto | Pin an exact shape (`GET /v1/shapes`) |
-| `LANGFLOW_SANDBOX_CREATEOS_ACCEPT_EGRESS_EXCEPTIONS` | `false` | Required to run with restricted egress — read the next section first |
+| Variable                                             | Default                      | Effect                                                               |
+| ---------------------------------------------------- | ---------------------------- | -------------------------------------------------------------------- |
+| `CREATEOS_SANDBOX_API_KEY`                           | —                            | **Required.** Falls back to `CREATEOS_API_KEY`                       |
+| `CREATEOS_SANDBOX_BASE_URL`                          | `https://api.sb.createos.sh` | Control-plane endpoint                                               |
+| `CREATEOS_SANDBOX_ROOTFS`                            | `devbox:1`                   | Guest image                                                          |
+| `CREATEOS_SANDBOX_SHAPE`                             | auto                         | Pin an exact shape (`GET /v1/shapes`)                                |
+| `LANGFLOW_SANDBOX_CREATEOS_ACCEPT_EGRESS_EXCEPTIONS` | `false`                      | Required to run with restricted egress — read the next section first |
 
 ### Shapes
 
@@ -95,17 +95,17 @@ Three differences, all of them load-bearing:
 
 2. **`LANGFLOW_SANDBOX_ALLOWED_DOMAINS` is refused, not honoured.** CreateOS
    does not enforce hostname egress rules. The API accepts them and echoes them
-   back, so the allowlist *looks* applied while restricting nothing. Measured
+   back, so the allowlist _looks_ applied while restricting nothing. Measured
    against the live control plane, one VM per rule form, probing an allowlisted
    host and a non-allowlisted one:
 
-   | Rule sent | `pypi.org` | `example.com` (not listed) | Enforced |
-   |---|---|---|---|
-   | `pypi.org` | reachable | **reachable** | no |
-   | `pypi.org:443` | reachable | **reachable** | no |
-   | `*.pypi.org`, `pypi.org` | reachable | **reachable** | no |
-   | `151.101.192.223:443` | reachable | blocked | yes |
-   | `240.0.0.0/4` | blocked | blocked | yes |
+   | Rule sent                | `pypi.org` | `example.com` (not listed) | Enforced |
+   | ------------------------ | ---------- | -------------------------- | -------- |
+   | `pypi.org`               | reachable  | **reachable**              | no       |
+   | `pypi.org:443`           | reachable  | **reachable**              | no       |
+   | `*.pypi.org`, `pypi.org` | reachable  | **reachable**              | no       |
+   | `151.101.192.223:443`    | reachable  | blocked                    | yes      |
+   | `240.0.0.0/4`            | blocked    | blocked                    | yes      |
 
    Only address-based rules reach the host's iptables/eBPF policy. So
    `capabilities()` reports `supports_domain_allowlist=False`, Langflow's policy
@@ -137,11 +137,11 @@ for declaring such a hole, so the backend enforces it itself.
 ## The CreateOS Sandbox component
 
 A microVM as a flow node — an arbitrary command or Python program, with two
-things the sandbox *backend* protocol cannot express:
+things the sandbox _backend_ protocol cannot express:
 
 - **Guest reuse** (`Guest Reuse: flow`) — one guest survives across executions of
   the flow, so installed packages and files carry over. Verified: three runs,
-  one guest, `RUN_COUNT 1 → 2 → 3`. The guest's *name* is the registry (derived
+  one guest, `RUN_COUNT 1 → 2 → 3`. The guest's _name_ is the registry (derived
   from flow id + component id), so reuse survives a worker restart and needs no
   state in the Langflow process.
 - **Returned files** (`Return Files`) — anything the guest writes to
@@ -183,14 +183,14 @@ back.
 `Graph.arun`. Langflow's UI build endpoint walks the vertices itself and never
 enters that path, so the playground still executes in the server process.
 
-| Variable | Default | Effect |
-|---|---|---|
-| `CREATEOS_EXECUTOR_ROOTFS` | image default | **The supported path.** A template with Langflow and your components installed |
-| `CREATEOS_EXECUTOR_SHAPE` | `s-4vcpu-8gb` | Guest size |
-| `CREATEOS_EXECUTOR_TIMEOUT_SECONDS` | `600` | Wall clock, enforced in-guest by `timeout(1)` |
-| `CREATEOS_EXECUTOR_EGRESS` | `*` | Comma-separated **address** rules. Defaults open because flows call model providers |
-| `CREATEOS_EXECUTOR_INSTALL_LFX` | `false` | Per-run `pip install` fallback — for a first experiment, not production |
-| `CREATEOS_EXECUTOR_PIP` | empty | Extra packages for that fallback |
+| Variable                            | Default       | Effect                                                                              |
+| ----------------------------------- | ------------- | ----------------------------------------------------------------------------------- |
+| `CREATEOS_EXECUTOR_ROOTFS`          | image default | **The supported path.** A template with Langflow and your components installed      |
+| `CREATEOS_EXECUTOR_SHAPE`           | `s-4vcpu-8gb` | Guest size                                                                          |
+| `CREATEOS_EXECUTOR_TIMEOUT_SECONDS` | `600`         | Wall clock, enforced in-guest by `timeout(1)`                                       |
+| `CREATEOS_EXECUTOR_EGRESS`          | `*`           | Comma-separated **address** rules. Defaults open because flows call model providers |
+| `CREATEOS_EXECUTOR_INSTALL_LFX`     | `false`       | Per-run `pip install` fallback — for a first experiment, not production             |
+| `CREATEOS_EXECUTOR_PIP`             | empty         | Extra packages for that fallback                                                    |
 
 **The guest needs every dependency your components use.** Measured: with bare
 `lfx` in the guest, a Python Interpreter flow rebuilds correctly and then every
@@ -227,7 +227,7 @@ from it, so **the backend** cannot reuse a guest or return files.
 
 Those two capabilities are not lost — they moved. The **component** above does
 both, because a component declares its own inputs and outputs and is not bound
-by the backend protocol. Restoring them *in the backend* still needs an upstream
+by the backend protocol. Restoring them _in the backend_ still needs an upstream
 change.
 
 ## How one execution works

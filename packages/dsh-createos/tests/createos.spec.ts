@@ -97,12 +97,12 @@ describe("CreateOSRuntime", () => {
       },
     }));
     const destroy = vi.fn().mockResolvedValue({ id: "sb_test", status: "destroying" });
-    const waitUntilDestroyed = vi
-      .fn()
-      .mockImplementation(async function (this: { status: string }) {
-        this.status = "destroyed";
-        return this;
-      });
+    const waitUntilDestroyed = vi.fn().mockImplementation(async function (this: {
+      status: string;
+    }) {
+      this.status = "destroyed";
+      return this;
+    });
     const sandbox = { id: "sb_test", status: "running", runCommand, destroy, waitUntilDestroyed };
     const createSandbox = vi.fn().mockResolvedValue(sandbox);
     sdk.client = { createSandbox, http: {} };

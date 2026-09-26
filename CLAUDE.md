@@ -5,13 +5,13 @@ ship host integrations that run ad-hoc / heavy / untrusted code in disposable
 CreateOS sandboxes — five through the authed `createos` CLI, one (Langflow)
 straight against the REST API:
 
-| Package                          | IDE / host       | Path                           |
-| -------------------------------- | ---------------- | ------------------------------ |
-| `claude-code-plugin`             | Claude Code      | `packages/claude-code-plugin/` |
-| `pi-extension`                   | Pi               | `packages/pi-extension/`       |
-| `@createos/opencode`             | OpenCode         | `packages/opencode-plugin/`    |
-| `@nodeops-createos/dsh-createos` | DeepSeek Harness | `packages/dsh-createos/`       |
-| `createos.sandbox`               | Herdr            | `packages/herdr-plugin/`       |
+| Package                          | IDE / host       | Path                                  |
+| -------------------------------- | ---------------- | ------------------------------------- |
+| `claude-code-plugin`             | Claude Code      | `packages/claude-code-plugin/`        |
+| `pi-extension`                   | Pi               | `packages/pi-extension/`              |
+| `@createos/opencode`             | OpenCode         | `packages/opencode-plugin/`           |
+| `@nodeops-createos/dsh-createos` | DeepSeek Harness | `packages/dsh-createos/`              |
+| `createos.sandbox`               | Herdr            | `packages/herdr-plugin/`              |
 | `langflow-sandbox-createos`      | Langflow         | `packages/langflow-sandbox-createos/` |
 
 `langflow-sandbox-createos/` is the odd one out twice over: it is **Python**, not
@@ -24,11 +24,11 @@ dataclasses it returns belong to `lfx`, and that coupling is the whole point.
 It ships **three** Langflow entry points from one distribution, each opted into
 separately:
 
-| Entry point | Surface | Scope |
-| ----------- | ------- | ----- |
-| `lfx.sandbox_backends` | Python Interpreter's code runs in a microVM | allowlisted by the operator |
-| `langflow.extensions` | a **CreateOS Sandbox** canvas component | auto-imported, inert until used |
-| `lfx.executors` | a whole flow graph runs in a microVM | `/api/v1/run`, CLI, Loop — **not** the UI |
+| Entry point            | Surface                                     | Scope                                     |
+| ---------------------- | ------------------------------------------- | ----------------------------------------- |
+| `lfx.sandbox_backends` | Python Interpreter's code runs in a microVM | allowlisted by the operator               |
+| `langflow.extensions`  | a **CreateOS Sandbox** canvas component     | auto-imported, inert until used           |
+| `lfx.executors`        | a whole flow graph runs in a microVM        | `/api/v1/run`, CLI, Loop — **not** the UI |
 
 Two facts that cost real time to establish, both verified against a live
 control plane rather than read from docs:
@@ -78,10 +78,10 @@ Marketplace index is the root `README.md`; each package has its own `README.md`.
 Architectural decisions live in `docs/adr/`. Read the relevant one before
 reworking the thing it covers.
 
-| ADR                                                    | Decision                                                                                 | Status                     |
-| ------------------------------------------------------ | ---------------------------------------------------------------------------------------- | -------------------------- |
-| [0001](./docs/adr/0001-cos-bash-driver.md)             | `cos`, a bash driver, as the plugin's execution engine — not the `createos` CLI directly | accepted, **under review** |
-| [0003](./docs/adr/0003-pi-extension-prompt-surface.md) | pi-extension prompt surface: `promptGuidelines` only where they add signal               | accepted                   |
+| ADR                                                    | Decision                                                                                  | Status                     |
+| ------------------------------------------------------ | ----------------------------------------------------------------------------------------- | -------------------------- |
+| [0001](./docs/adr/0001-cos-bash-driver.md)             | `cos`, a bash driver, as the plugin's execution engine — not the `createos` CLI directly  | accepted, **under review** |
+| [0003](./docs/adr/0003-pi-extension-prompt-surface.md) | pi-extension prompt surface: `promptGuidelines` only where they add signal                | accepted                   |
 | [0004](./docs/adr/0004-herdr-plugin-shape.md)          | Herdr plugin: thin TypeScript over the `createos` CLI, not Rust and not a receipt harness | accepted                   |
 
 ADR-0001 is load-bearing for anyone touching `scripts/cos`, the skill, or the
@@ -118,15 +118,15 @@ member (see Cross-repo mesh below) — cross-reference only.
 
 ### The family
 
-| repo | path | role | public? | ripples when you change |
-| --- | --- | --- | --- | --- |
-| **fc** | `../fc` | control plane — **source of truth** | 🔒 private | HTTP API, wire/JSON fields, error shapes, lifecycle/state, limits/quotas, behavior |
-| **[fc-sdk](https://github.com/nodeops-app/fc-sdk)** | `../fc-sdk` | TypeScript SDK **+ `examples/`** | 🌐 public | public SDK methods, wire types, example apps |
-| **[createos-go-sdk](https://github.com/NodeOps-app/createos-go-sdk)** | `../createos-go-sdk` | Go SDK | 🌐 public | public SDK methods, wire types, examples |
-| **[createos-python-sdk](https://github.com/NodeOps-app/createos-python-sdk)** | `../createos-python-sdk` | Python SDK | 🌐 public | public SDK methods, wire types, examples |
-| **[createos-cli](https://github.com/nodeops-app/createos-cli)** | `../createos-cli` | Go CLI (`createos`) | 🌐 public | commands, flags, help/UX text |
-| **[createos-v2-landing](https://github.com/NodeOps-app/createos-v2-landing)** | `../createos-v2-landing` | public docs — `apps/docs/src/pages/Sandbox/` | 🌐 public | REST / SDK / CLI reference, concept and integration pages |
-| **createos-plugin** ← you are here | this repo | integrations monorepo — plugins for 8 agent hosts | 🌐 public | skills, slash commands, hooks, tools |
+| repo                                                                          | path                     | role                                              | public?    | ripples when you change                                                            |
+| ----------------------------------------------------------------------------- | ------------------------ | ------------------------------------------------- | ---------- | ---------------------------------------------------------------------------------- |
+| **fc**                                                                        | `../fc`                  | control plane — **source of truth**               | 🔒 private | HTTP API, wire/JSON fields, error shapes, lifecycle/state, limits/quotas, behavior |
+| **[fc-sdk](https://github.com/nodeops-app/fc-sdk)**                           | `../fc-sdk`              | TypeScript SDK **+ `examples/`**                  | 🌐 public  | public SDK methods, wire types, example apps                                       |
+| **[createos-go-sdk](https://github.com/NodeOps-app/createos-go-sdk)**         | `../createos-go-sdk`     | Go SDK                                            | 🌐 public  | public SDK methods, wire types, examples                                           |
+| **[createos-python-sdk](https://github.com/NodeOps-app/createos-python-sdk)** | `../createos-python-sdk` | Python SDK                                        | 🌐 public  | public SDK methods, wire types, examples                                           |
+| **[createos-cli](https://github.com/nodeops-app/createos-cli)**               | `../createos-cli`        | Go CLI (`createos`)                               | 🌐 public  | commands, flags, help/UX text                                                      |
+| **[createos-v2-landing](https://github.com/NodeOps-app/createos-v2-landing)** | `../createos-v2-landing` | public docs — `apps/docs/src/pages/Sandbox/`      | 🌐 public  | REST / SDK / CLI reference, concept and integration pages                          |
+| **createos-plugin** ← you are here                                            | this repo                | integrations monorepo — plugins for 8 agent hosts | 🌐 public  | skills, slash commands, hooks, tools                                               |
 
 ### What counts as a shared surface
 
@@ -136,20 +136,19 @@ HTTP endpoint or method · wire or JSON field · error shape · sandbox lifecycl
 
 `fc` (`openapi.yaml`) → the three SDKs → `createos-cli` → examples → public docs → integrations
 
-
 Integrations do not all follow the same path — a CLI change reaches the shellers, a wire change reaches the other two directly:
 
-| package | host | reaches CreateOS by | docs page |
-| --- | --- | --- | --- |
-| `claude-code-plugin` | Claude Code | shells out to `createos` CLI | `Integrations/Claude-Code` |
-| `codex-plugin` | Codex | shells out to `createos` CLI | `Integrations/Codex` |
-| `opencode-plugin` | OpenCode | shells out to `createos` CLI | `Integrations/OpenCode` |
-| `pi-extension` | Pi | shells out to `createos` CLI | `Integrations/Pi` |
-| `herdr-plugin` | Herdr | shells out to `createos` CLI | `Integrations/Herdr` |
-| `orca-plugin` | Orca | pointer only — code lives in its own repo | `Integrations/Orca` |
-| `dsh-createos` | DeepSeek Harness | imports the TypeScript SDK | `Integrations/DeepSeek-Harness` |
-| `langflow-sandbox-createos` | Langflow | calls the REST API directly | **none yet** |
-| `shared` | shared library | shells out to `createos` CLI | **none yet** |
+| package                     | host             | reaches CreateOS by                       | docs page                       |
+| --------------------------- | ---------------- | ----------------------------------------- | ------------------------------- |
+| `claude-code-plugin`        | Claude Code      | shells out to `createos` CLI              | `Integrations/Claude-Code`      |
+| `codex-plugin`              | Codex            | shells out to `createos` CLI              | `Integrations/Codex`            |
+| `opencode-plugin`           | OpenCode         | shells out to `createos` CLI              | `Integrations/OpenCode`         |
+| `pi-extension`              | Pi               | shells out to `createos` CLI              | `Integrations/Pi`               |
+| `herdr-plugin`              | Herdr            | shells out to `createos` CLI              | `Integrations/Herdr`            |
+| `orca-plugin`               | Orca             | pointer only — code lives in its own repo | `Integrations/Orca`             |
+| `dsh-createos`              | DeepSeek Harness | imports the TypeScript SDK                | `Integrations/DeepSeek-Harness` |
+| `langflow-sandbox-createos` | Langflow         | calls the REST API directly               | **none yet**                    |
+| `shared`                    | shared library   | shells out to `createos` CLI              | **none yet**                    |
 
 ### Frozen — do not update
 
@@ -164,4 +163,3 @@ Integrations do not all follow the same path — a CLI change reaches the shelle
 5. **Report, don't edit.** This is a read-and-report protocol: do not change a sibling repo unless the user asks you to.
 
 <!-- MESH:END -->
-

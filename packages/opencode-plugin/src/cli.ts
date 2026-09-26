@@ -243,10 +243,9 @@ export class CLI {
           `Execution failed; could not stop ${id}/${processId}`,
         );
       }
-      throw new Error(
-        `Execution failed in ${id}, process ${processId}: ${errorText(error)}`,
-        { cause: error },
-      );
+      throw new Error(`Execution failed in ${id}, process ${processId}: ${errorText(error)}`, {
+        cause: error,
+      });
     }
   }
 }

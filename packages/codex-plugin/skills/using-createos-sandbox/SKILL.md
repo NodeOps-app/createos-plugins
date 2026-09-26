@@ -36,23 +36,23 @@ Every `cos` command except `install` and `auth` runs this check first, so an una
 
 ## When to reach for it
 
-| Situation                                                                                      | Why offload                                                                        |
-| ---------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------- |
-| **Untrusted / unknown code** — a snippet, a fresh npm/pip package, scraped code, a PoC exploit | Isolation. The blast radius is one disposable box, not the laptop. One file → `exec`. |
+| Situation                                                                                              | Why offload                                                                                  |
+| ------------------------------------------------------------------------------------------------------ | -------------------------------------------------------------------------------------------- |
+| **Untrusted / unknown code** — a snippet, a fresh npm/pip package, scraped code, a PoC exploit         | Isolation. The blast radius is one disposable box, not the laptop. One file → `exec`.        |
 | **Any ad-hoc script** — a one-off Python/JS/shell/Go snippet to compute, parse, probe or try something | Keep the laptop clean; `exec` runs it remotely and returns stdout, stderr and the exit code. |
-| **Heavy build or test suite** — big `make`, full test run, compile, benchmark                  | Keeps the laptop free; runs on a box sized for it.                                 |
-| **Parallel/matrix work** — same job across N configs, test shards, batch                       | `fanout` — each command in its own throwaway box, concurrently, results collected. |
-| **Quick scratch Linux** — try a CLI/tool/snippet on a clean box                                | `shell` — instant keyless box, destroyed on exit (interactive; the user runs it).  |
-| **Clean-room repro** — "works on my machine" bugs, dependency conflicts                        | Fresh rootfs every time, no host state.                                            |
-| **Live dev loop** — dev server / test watcher / REPL that reacts to edits                      | Project box + `sync`; you edit locally, the box reacts.                        |
-| **Reach a box-side service** — dev server, DB, API                                             | `tunnel` (private, to `127.0.0.1`) or `expose` (public HTTPS link to share).       |
-| **Needs a screen** — a real browser, a GUI app, or a desktop to click through                  | `desktop` — graphical box + noVNC URL; `computer` to drive it (screenshot/click/type). |
-| **Multi-machine** — distributed system, DB replication, p2p mesh, load test                    | `cluster up N` — boxes share one private net, reach each other by name.            |
-| **Same setup, many variants** — try N branches from one prepared box                           | `fork` the project box into independent clones.                                    |
-| **Repeated identical setup** — every offload starts with the same install prelude              | `template` — bake the toolchain into an image once.                                |
-| **Done for now, back tomorrow** — warm box you don't want to rebuild                           | `pause` — snapshot at zero compute cost, `resume` restores it exactly.             |
-| **Hand the work to another coding agent** — second opinion, long refactor, untrusted repo      | `agent` — `claude`/`codex`/`opencode`/`pi`/`cursor` run in a box, on any provider. |
-| **Big data / weights / shared cache**                                                          | `disk` — BYO S3 bucket mounted into the box, survives box death.                   |
+| **Heavy build or test suite** — big `make`, full test run, compile, benchmark                          | Keeps the laptop free; runs on a box sized for it.                                           |
+| **Parallel/matrix work** — same job across N configs, test shards, batch                               | `fanout` — each command in its own throwaway box, concurrently, results collected.           |
+| **Quick scratch Linux** — try a CLI/tool/snippet on a clean box                                        | `shell` — instant keyless box, destroyed on exit (interactive; the user runs it).            |
+| **Clean-room repro** — "works on my machine" bugs, dependency conflicts                                | Fresh rootfs every time, no host state.                                                      |
+| **Live dev loop** — dev server / test watcher / REPL that reacts to edits                              | Project box + `sync`; you edit locally, the box reacts.                                      |
+| **Reach a box-side service** — dev server, DB, API                                                     | `tunnel` (private, to `127.0.0.1`) or `expose` (public HTTPS link to share).                 |
+| **Needs a screen** — a real browser, a GUI app, or a desktop to click through                          | `desktop` — graphical box + noVNC URL; `computer` to drive it (screenshot/click/type).       |
+| **Multi-machine** — distributed system, DB replication, p2p mesh, load test                            | `cluster up N` — boxes share one private net, reach each other by name.                      |
+| **Same setup, many variants** — try N branches from one prepared box                                   | `fork` the project box into independent clones.                                              |
+| **Repeated identical setup** — every offload starts with the same install prelude                      | `template` — bake the toolchain into an image once.                                          |
+| **Done for now, back tomorrow** — warm box you don't want to rebuild                                   | `pause` — snapshot at zero compute cost, `resume` restores it exactly.                       |
+| **Hand the work to another coding agent** — second opinion, long refactor, untrusted repo              | `agent` — `claude`/`codex`/`opencode`/`pi`/`cursor` run in a box, on any provider.           |
+| **Big data / weights / shared cache**                                                                  | `disk` — BYO S3 bucket mounted into the box, survives box death.                             |
 
 Do NOT offload trivial commands, anything needing the user's local secrets/SSH/cloud creds, or work that must touch real local filesystem state.
 
@@ -249,10 +249,10 @@ Disk data lives in the user's own S3 account and region. `--path-style` is neede
 
 Load these when the task actually needs the depth — the summaries above are enough for most work.
 
-| File                                 | Read it for                                                                                                                                                                |
-| ------------------------------------ | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `references/offload-and-egress.md`   | offload flag table, egress presets and how enforcement really behaves, fanout, upload excludes, heavy-build OOM/disk/bandwidth traps                                       |
-| `references/networking.md`           | choosing between tunnel/expose/cluster/vpn, cluster DNS names, expose gotchas, WireGuard setup                                                                             |
+| File                                 | Read it for                                                                                                                                                                       |
+| ------------------------------------ | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `references/offload-and-egress.md`   | offload flag table, egress presets and how enforcement really behaves, fanout, upload excludes, heavy-build OOM/disk/bandwidth traps                                              |
+| `references/networking.md`           | choosing between tunnel/expose/cluster/vpn, cluster DNS names, expose gotchas, WireGuard setup                                                                                    |
 | `references/coding-agents.md`        | the five agent CLIs in `devbox:1`, per-agent provider wiring (OpenRouter / OpenAI-compatible / Anthropic-compatible), which agents can't be repointed, egress around an agent box |
-| `references/lifecycle-and-images.md` | pause/resume, auto-pause tuning, fork caveats, built-in rootfs vs custom templates, env vars, remote editor, self-terminating jobs, single-file transfer, measured timings |
-| `references/docs.md`                 | every page of the live CreateOS Sandbox docs as a fetchable `.md` URL — REST API, SDKs, CLI reference, limits, concepts, integrations. Fetch only the page you need |
+| `references/lifecycle-and-images.md` | pause/resume, auto-pause tuning, fork caveats, built-in rootfs vs custom templates, env vars, remote editor, self-terminating jobs, single-file transfer, measured timings        |
+| `references/docs.md`                 | every page of the live CreateOS Sandbox docs as a fetchable `.md` URL — REST API, SDKs, CLI reference, limits, concepts, integrations. Fetch only the page you need               |

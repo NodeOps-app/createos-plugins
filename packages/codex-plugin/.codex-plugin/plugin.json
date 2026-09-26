@@ -8,14 +8,7 @@
     "url": "https://createos.sh"
   },
   "homepage": "https://createos.sh",
-  "keywords": [
-    "sandbox",
-    "createos",
-    "remote-exec",
-    "isolation",
-    "desktop",
-    "computer-use"
-  ],
+  "keywords": ["sandbox", "createos", "remote-exec", "isolation", "desktop", "computer-use"],
   "skills": "./skills/",
   "interface": {
     "displayName": "CreateOS Sandbox",

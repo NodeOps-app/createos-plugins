@@ -17,14 +17,14 @@ Herdr pane  ──►  createos sandbox process attach  ──►  PTY in the mi
 
 ## Agents
 
-| `agent` value | Agent       | Installed with                                                    |
-| ------------- | ----------- | ----------------------------------------------------------------- |
-| `claude-code` | Claude Code | `curl -fsSL https://claude.ai/install.sh \| bash`                  |
-| `codex`       | Codex       | `curl -fsSL https://chatgpt.com/codex/install.sh \| sh`            |
-| `opencode`    | OpenCode    | `curl -fsSL https://opencode.ai/install \| bash`                   |
-| `pi`          | Pi          | `curl -fsSL https://pi.dev/install.sh \| sh`                       |
-| `cursor`      | Cursor      | `curl https://cursor.com/install -fsS \| bash`                     |
-| `shell`       | none        | opens a plain login shell                                          |
+| `agent` value | Agent       | Installed with                                          |
+| ------------- | ----------- | ------------------------------------------------------- |
+| `claude-code` | Claude Code | `curl -fsSL https://claude.ai/install.sh \| bash`       |
+| `codex`       | Codex       | `curl -fsSL https://chatgpt.com/codex/install.sh \| sh` |
+| `opencode`    | OpenCode    | `curl -fsSL https://opencode.ai/install \| bash`        |
+| `pi`          | Pi          | `curl -fsSL https://pi.dev/install.sh \| sh`            |
+| `cursor`      | Cursor      | `curl https://cursor.com/install -fsS \| bash`          |
+| `shell`       | none        | opens a plain login shell                               |
 
 Each installer is the official one. The plugin runs it inside the sandbox, then
 resolves the binary with `command -v` and fails if the binary is missing.
@@ -72,16 +72,16 @@ Pick the agent and the sandbox size while you install:
 createos sandbox setup herdr --agent codex --shape s-4vcpu-8gb
 ```
 
-| Flag                  | What it does                                                  |
-| --------------------- | ------------------------------------------------------------- |
-| `--doctor`            | Report the prerequisites and stop.                             |
-| `--local <path>`      | Link a local checkout instead of installing from GitHub.       |
-| `--agent <kind>`      | `claude-code`, `codex`, `opencode`, `pi`, `cursor`, `shell`.    |
-| `--shape`, `--rootfs` | Sandbox size and image.                                        |
-| `--auto-pause`        | Pause a sandbox after this long with no activity.              |
-| `--remote-root`       | Where the worktree lands inside the sandbox.                   |
-| `--no-keys`           | Leave your `config.toml` alone.                                |
-| `--force`             | Replace an existing plugin `config.json`.                      |
+| Flag                  | What it does                                                 |
+| --------------------- | ------------------------------------------------------------ |
+| `--doctor`            | Report the prerequisites and stop.                           |
+| `--local <path>`      | Link a local checkout instead of installing from GitHub.     |
+| `--agent <kind>`      | `claude-code`, `codex`, `opencode`, `pi`, `cursor`, `shell`. |
+| `--shape`, `--rootfs` | Sandbox size and image.                                      |
+| `--auto-pause`        | Pause a sandbox after this long with no activity.            |
+| `--remote-root`       | Where the worktree lands inside the sandbox.                 |
+| `--no-keys`           | Leave your `config.toml` alone.                              |
+| `--force`             | Replace an existing plugin `config.json`.                    |
 
 The command backs up `config.toml` before it adds keys, adds only the bindings
 you do not already have, and never touches an existing plugin `config.json`
@@ -141,17 +141,17 @@ description = "reattach the agent to this pane"
 
 ## Actions
 
-| Action    | What it does                                                                                                  |
-| --------- | ------------------------------------------------------------------------------------------------------------- |
-| `start`   | Creates a sandbox, uploads the worktree, installs the agent, splits the pane, and attaches the agent PTY.       |
-| `attach`  | Resumes the sandbox if paused, starts the agent again if its process died, and reattaches it to the pane.       |
-| `sync`    | Opens a pane that runs `createos sandbox sync --mode two-way` until you stop it.                                |
-| `apply`   | Exports a Git patch from the sandbox and applies it locally, after `git apply --check` passes.                  |
-| `pause`   | Snapshots the sandbox. See the known problem below.                                                             |
-| `resume`  | Brings a paused sandbox back.                                                                                   |
-| `info`    | Prints the agent, sandbox, status, and paths mapped to the pane.                                                |
-| `delete`  | Permanently deletes the sandbox. Invoke it twice within 60 seconds to confirm.                                  |
-| `boxes`   | An overlay pane that refreshes `createos sandbox list` every 5 seconds.                                         |
+| Action   | What it does                                                                                              |
+| -------- | --------------------------------------------------------------------------------------------------------- |
+| `start`  | Creates a sandbox, uploads the worktree, installs the agent, splits the pane, and attaches the agent PTY. |
+| `attach` | Resumes the sandbox if paused, starts the agent again if its process died, and reattaches it to the pane. |
+| `sync`   | Opens a pane that runs `createos sandbox sync --mode two-way` until you stop it.                          |
+| `apply`  | Exports a Git patch from the sandbox and applies it locally, after `git apply --check` passes.            |
+| `pause`  | Snapshots the sandbox. See the known problem below.                                                       |
+| `resume` | Brings a paused sandbox back.                                                                             |
+| `info`   | Prints the agent, sandbox, status, and paths mapped to the pane.                                          |
+| `delete` | Permanently deletes the sandbox. Invoke it twice within 60 seconds to confirm.                            |
+| `boxes`  | An overlay pane that refreshes `createos sandbox list` every 5 seconds.                                   |
 
 `apply` is incremental. It commits a baseline in the sandbox after each apply,
 so the next apply carries only newer work. A second apply with no new work

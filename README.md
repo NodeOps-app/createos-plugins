@@ -125,17 +125,17 @@ The Claude Code, Codex, Pi, and OpenCode integrations use the `createos` CLI. Cl
 
 ## Packages
 
-| Package                                                       | What it does                                                                                                                                                                                                                                                |
-| ------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| [**claude-code-plugin**](./packages/claude-code-plugin)       | Hooks-based Claude Code plugin — offload, parallel fanout, scratch shell, reusable box with sync, port tunnel, public HTTPS expose, private-network clusters, BYO-S3 disk mounts, WireGuard VPN, and snapshot/fork — all driving the authed `createos` CLI. |
-| [**pi-extension**](./packages/pi-extension)                   | Pi coding agent extension with all 33 `sandbox_*` tools for lifecycle, configuration, port tunnels, file sync, private networks, persistent disks, and device VPN. Built-in tools route remotely only with `--inside-createos-sandbox`.                     |
-| [**createos-sandbox-codex**](./packages/codex-plugin)         | Codex plugin — the `cos` driver, the `using-createos-sandbox` skill, and session-start / offload-hint hooks. Same engine as the Claude Code plugin.                                                                                                        |
-| [**@createos/opencode**](./packages/opencode-plugin)          | Native OpenCode V2 plugin with 54 sandbox tools, opt-in remote shell/file routing, session-scoped persistence, managed processes, and a public RPC contract. |
-| [**@nodeops-createos/dsh-createos**](./packages/dsh-createos) | DeepSeek Harness bundle that replaces `ctx.fs` and `ctx.subprocess` together, so Bash, file, LSP, and PTY consumers operate inside one CreateOS sandbox without provider-specific tool forks.                                                               |
-| [**createos.sandbox**](./packages/herdr-plugin)               | Herdr plugin that runs Claude Code, Codex, OpenCode, Pi, or Cursor **inside** a CreateOS Sandbox and attaches its PTY to a Herdr pane. One pane maps to one sandbox, with filtered upload, two-way sync, patch apply back, and Herdr agent detection.        |
-| [**langflow-sandbox-createos**](./packages/langflow-sandbox-createos) | Langflow integration (Python, pip) — three surfaces from one install: a **sandbox backend** hardening the Python Interpreter, a **CreateOS Sandbox component** with guest reuse and file return, and an **executor** that runs a whole flow graph in a microVM. A Langflow host with no KVM/HVF still gets hardware isolation.                                  |
-| [**createos-orca-plugin**](https://github.com/NodeOps-app/createos-orca-plugin)| Orca VM recipe — runs a whole Orca workspace on a disposable microVM instead of your laptop. Lives in its own repository, because Orca installs a plugin from a repository root. Optionally installs Claude Code, Codex, Cursor, OpenCode, or Pi.           |
-| [**@createos/n8n-nodes-createos**](https://github.com/NodeOps-app/n8n-nodes-createos)| n8n community node — create and manage sandboxes, run shell commands, transfer files, and manage templates, networks, and disks from n8n workflows. Lives in its own repository; talks to the REST API with a **CreateOS API** credential, not the CLI.                                          |
+| Package                                                                               | What it does                                                                                                                                                                                                                                                                                                                   |
+| ------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| [**claude-code-plugin**](./packages/claude-code-plugin)                               | Hooks-based Claude Code plugin — offload, parallel fanout, scratch shell, reusable box with sync, port tunnel, public HTTPS expose, private-network clusters, BYO-S3 disk mounts, WireGuard VPN, and snapshot/fork — all driving the authed `createos` CLI.                                                                    |
+| [**pi-extension**](./packages/pi-extension)                                           | Pi coding agent extension with all 33 `sandbox_*` tools for lifecycle, configuration, port tunnels, file sync, private networks, persistent disks, and device VPN. Built-in tools route remotely only with `--inside-createos-sandbox`.                                                                                        |
+| [**createos-sandbox-codex**](./packages/codex-plugin)                                 | Codex plugin — the `cos` driver, the `using-createos-sandbox` skill, and session-start / offload-hint hooks. Same engine as the Claude Code plugin.                                                                                                                                                                            |
+| [**@createos/opencode**](./packages/opencode-plugin)                                  | Native OpenCode V2 plugin with 54 sandbox tools, opt-in remote shell/file routing, session-scoped persistence, managed processes, and a public RPC contract.                                                                                                                                                                   |
+| [**@nodeops-createos/dsh-createos**](./packages/dsh-createos)                         | DeepSeek Harness bundle that replaces `ctx.fs` and `ctx.subprocess` together, so Bash, file, LSP, and PTY consumers operate inside one CreateOS sandbox without provider-specific tool forks.                                                                                                                                  |
+| [**createos.sandbox**](./packages/herdr-plugin)                                       | Herdr plugin that runs Claude Code, Codex, OpenCode, Pi, or Cursor **inside** a CreateOS Sandbox and attaches its PTY to a Herdr pane. One pane maps to one sandbox, with filtered upload, two-way sync, patch apply back, and Herdr agent detection.                                                                          |
+| [**langflow-sandbox-createos**](./packages/langflow-sandbox-createos)                 | Langflow integration (Python, pip) — three surfaces from one install: a **sandbox backend** hardening the Python Interpreter, a **CreateOS Sandbox component** with guest reuse and file return, and an **executor** that runs a whole flow graph in a microVM. A Langflow host with no KVM/HVF still gets hardware isolation. |
+| [**createos-orca-plugin**](https://github.com/NodeOps-app/createos-orca-plugin)       | Orca VM recipe — runs a whole Orca workspace on a disposable microVM instead of your laptop. Lives in its own repository, because Orca installs a plugin from a repository root. Optionally installs Claude Code, Codex, Cursor, OpenCode, or Pi.                                                                              |
+| [**@createos/n8n-nodes-createos**](https://github.com/NodeOps-app/n8n-nodes-createos) | n8n community node — create and manage sandboxes, run shell commands, transfer files, and manage templates, networks, and disks from n8n workflows. Lives in its own repository; talks to the REST API with a **CreateOS API** credential, not the CLI.                                                                        |
 
 ## Orca — run a workspace on a sandbox
 
@@ -222,18 +222,18 @@ Full tool inventory lives in the [**Pi Extension README**](./packages/pi-extensi
 
 ## OpenCode V2 — tools at a glance (54)
 
-| Category            | Tools                                                                                                                  |
-| ------------------- | ---------------------------------------------------------------------------------------------------------------------- |
+| Category            | Tools                                                                                                                                              |
+| ------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------- |
 | **Execute & Files** | `sandbox_exec`, `sandbox_run_code`, `sandbox_offload`, `sandbox_fanout`, `sandbox_read/write/edit/patch/glob/grep`, `sandbox_pull`, `sandbox_push` |
-| **Lifecycle**       | `sandbox_create`, `sandbox_list`, `sandbox_info`, `sandbox_pause`, `sandbox_resume`, `sandbox_fork`, `sandbox_destroy` |
-| **Config**          | `sandbox_ingress`, `sandbox_firewall`, `sandbox_bandwidth`, `sandbox_shapes`, `sandbox_images`                         |
-| **Ports & Sync**    | `sandbox_preview_url`, `sandbox_tunnel`, `sandbox_sync`, `sandbox_transport_stop` |
-| **Networks**        | `sandbox_network_create/list/show/attach/detach/delete`                                                                |
-| **Disks**           | `sandbox_disk_create/list/show/delete/attach/detach`                                                                   |
-| **Device VPN**      | `sandbox_device_register/status`, `sandbox_vpn_up`; network attach/detach also supports device IDs |
-| **Processes**       | `sandbox_process_start/list/get/output/stop/input/close_stdin` |
-| **Desktop**         | `sandbox_desktop`, `sandbox_computer`, `sandbox_screenshot` |
-| **Session**         | `sandbox_status`, `/sandbox`, `/sandbox-release` |
+| **Lifecycle**       | `sandbox_create`, `sandbox_list`, `sandbox_info`, `sandbox_pause`, `sandbox_resume`, `sandbox_fork`, `sandbox_destroy`                             |
+| **Config**          | `sandbox_ingress`, `sandbox_firewall`, `sandbox_bandwidth`, `sandbox_shapes`, `sandbox_images`                                                     |
+| **Ports & Sync**    | `sandbox_preview_url`, `sandbox_tunnel`, `sandbox_sync`, `sandbox_transport_stop`                                                                  |
+| **Networks**        | `sandbox_network_create/list/show/attach/detach/delete`                                                                                            |
+| **Disks**           | `sandbox_disk_create/list/show/delete/attach/detach`                                                                                               |
+| **Device VPN**      | `sandbox_device_register/status`, `sandbox_vpn_up`; network attach/detach also supports device IDs                                                 |
+| **Processes**       | `sandbox_process_start/list/get/output/stop/input/close_stdin`                                                                                     |
+| **Desktop**         | `sandbox_desktop`, `sandbox_computer`, `sandbox_screenshot`                                                                                        |
+| **Session**         | `sandbox_status`, `/sandbox`, `/sandbox-release`                                                                                                   |
 
 Full reference in [opencode-plugin/README.md](./packages/opencode-plugin/README.md).
 
@@ -375,13 +375,13 @@ One control plane, three SDKs, a CLI, the public docs and the agent
 integrations, kept behaviourally in step. A change to any shared surface is
 expected to ripple across the rest.
 
-| repo | what it is | package |
-| --- | --- | --- |
-| [fc-sdk](https://github.com/nodeops-app/fc-sdk) | TypeScript SDK + `examples/` | `@nodeops-createos/sandbox` |
-| [createos-go-sdk](https://github.com/NodeOps-app/createos-go-sdk) | Go SDK | `github.com/NodeOps-app/createos-go-sdk` |
-| [createos-python-sdk](https://github.com/NodeOps-app/createos-python-sdk) | Python SDK | `createos-sandbox` |
-| [createos-cli](https://github.com/nodeops-app/createos-cli) | Go CLI (`createos`) | — |
-| [createos-v2-landing](https://github.com/NodeOps-app/createos-v2-landing) | public docs — `apps/docs/src/pages/Sandbox/` | — |
+| repo                                                                      | what it is                                   | package                                  |
+| ------------------------------------------------------------------------- | -------------------------------------------- | ---------------------------------------- |
+| [fc-sdk](https://github.com/nodeops-app/fc-sdk)                           | TypeScript SDK + `examples/`                 | `@nodeops-createos/sandbox`              |
+| [createos-go-sdk](https://github.com/NodeOps-app/createos-go-sdk)         | Go SDK                                       | `github.com/NodeOps-app/createos-go-sdk` |
+| [createos-python-sdk](https://github.com/NodeOps-app/createos-python-sdk) | Python SDK                                   | `createos-sandbox`                       |
+| [createos-cli](https://github.com/nodeops-app/createos-cli)               | Go CLI (`createos`)                          | —                                        |
+| [createos-v2-landing](https://github.com/NodeOps-app/createos-v2-landing) | public docs — `apps/docs/src/pages/Sandbox/` | —                                        |
 
 Working **in** this repository? [`CLAUDE.md`](CLAUDE.md) carries the full
 cross-repo map and the ripple protocol.

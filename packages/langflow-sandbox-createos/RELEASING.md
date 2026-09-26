@@ -16,13 +16,13 @@ the project is created on first upload.
 
 Go to <https://pypi.org/manage/account/publishing/> and add:
 
-| Field | Value |
-| --- | --- |
-| PyPI project name | `langflow-sandbox-createos` |
-| Owner | `NodeOps-app` |
-| Repository name | `createos-plugin` |
-| Workflow name | `langflow-sandbox-createos-release.yml` |
-| Environment name | `pypi` |
+| Field             | Value                                   |
+| ----------------- | --------------------------------------- |
+| PyPI project name | `langflow-sandbox-createos`             |
+| Owner             | `NodeOps-app`                           |
+| Repository name   | `createos-plugin`                       |
+| Workflow name     | `langflow-sandbox-createos-release.yml` |
+| Environment name  | `pypi`                                  |
 
 Repeat on <https://test.pypi.org/manage/account/publishing/> with environment
 name `testpypi` if you want the dry run below.

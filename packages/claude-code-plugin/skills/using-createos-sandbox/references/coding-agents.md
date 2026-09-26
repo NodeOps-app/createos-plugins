@@ -18,17 +18,17 @@ Read this when the job is "let another coding agent do this work somewhere that 
 
 Verified on a live `devbox:1` box (Ubuntu 24.04, runtimes under `asdf`):
 
-| CLI | Version seen | Headless invocation |
-| --- | --- | --- |
-| `claude` | 2.1.260 | `claude -p --dangerously-skip-permissions '<prompt>'` |
-| `codex` | 0.153.4 | `codex exec --skip-git-repo-check --dangerously-bypass-approvals-and-sandbox '<prompt>'` |
-| `opencode` | 1.18.30 | `opencode run --auto '<prompt>'` |
-| `pi` | 0.85.1 | `pi -p '<prompt>'` |
-| `cursor-agent` | 2026.09.10 | `cursor-agent -p --force '<prompt>'` |
+| CLI            | Version seen | Headless invocation                                                                      |
+| -------------- | ------------ | ---------------------------------------------------------------------------------------- |
+| `claude`       | 2.1.260      | `claude -p --dangerously-skip-permissions '<prompt>'`                                    |
+| `codex`        | 0.153.4      | `codex exec --skip-git-repo-check --dangerously-bypass-approvals-and-sandbox '<prompt>'` |
+| `opencode`     | 1.18.30      | `opencode run --auto '<prompt>'`                                                         |
+| `pi`           | 0.85.1       | `pi -p '<prompt>'`                                                                       |
+| `cursor-agent` | 2026.09.10   | `cursor-agent -p --force '<prompt>'`                                                     |
 
 Versions move; check with `cos offload . 'claude --version'` rather than quoting these. `desktop:1` ships the same five, which is what makes "run an agent on a box and let the user watch it work over noVNC" a thing you can do.
 
-Every one of these runs with its permission gate off. That is the right setting *here* and nowhere else: the microVM is the isolation, which is exactly the case `--dangerously-bypass-approvals-and-sandbox` and friends are documented for. Never carry these flags back to the user's machine.
+Every one of these runs with its permission gate off. That is the right setting _here_ and nowhere else: the microVM is the isolation, which is exactly the case `--dangerously-bypass-approvals-and-sandbox` and friends are documented for. Never carry these flags back to the user's machine.
 
 ## `cos agent` — the short version
 
@@ -115,7 +115,7 @@ codex exec --skip-git-repo-check --dangerously-bypass-approvals-and-sandbox \
 
 **`wire_api = "chat"` is rejected outright** (verified on 0.153.4 — it fails at config load with "no longer supported"). Codex speaks only the Responses API, so a plain Chat-Completions gateway — vLLM, LiteLLM in chat mode, most things advertised as "OpenAI-compatible" — cannot drive it. There is no Anthropic wire in codex at all.
 
-`--skip-git-repo-check` is required whenever `/work` isn't a git repo, and it is a hard error, not a warning. Codex retries a failed request 5 times before giving up, so a *blackholed* (rather than refused) egress rule multiplies wall-clock time rather than failing fast.
+`--skip-git-repo-check` is required whenever `/work` isn't a git repo, and it is a hard error, not a warning. Codex retries a failed request 5 times before giving up, so a _blackholed_ (rather than refused) egress rule multiplies wall-clock time rather than failing fast.
 
 ### opencode — resolves the provider from its own catalog
 
@@ -153,11 +153,16 @@ pi -p --provider openrouter --model 'openai/gpt-5.6-luna' 'fix the failing tests
 OpenRouter, Anthropic and OpenAI are built in, keyed off the usual env vars. A custom base URL needs a provider in `~/.pi/agent/models.json`:
 
 ```json
-{ "providers": { "mygw": {
-    "baseUrl": "https://gw.example.com/v1",
-    "api": "openai-completions",
-    "apiKey": "$MY_API_KEY",
-    "models": [ { "id": "my-model", "contextWindow": 256000, "maxTokens": 8192 } ] } } }
+{
+  "providers": {
+    "mygw": {
+      "baseUrl": "https://gw.example.com/v1",
+      "api": "openai-completions",
+      "apiKey": "$MY_API_KEY",
+      "models": [{ "id": "my-model", "contextWindow": 256000, "maxTokens": 8192 }]
+    }
+  }
+}
 ```
 
 `api` also accepts `anthropic-messages`, `openai-responses`, and several cloud-specific wires — pi is the most protocol-flexible of the five. `cos agent` doesn't write that file for you; do it in the command, or bake it into a template.
@@ -173,17 +178,17 @@ export CURSOR_API_KEY=key_...     # from the Cursor dashboard
 cursor-agent -p --force --model gpt-5 --output-format json 'fix the failing tests'
 ```
 
-Without `-f/--force` (alias `--yolo`) it only *proposes* changes and writes nothing — a silent no-op in a box you're about to destroy. `cursor-agent bedrock` configures AWS Bedrock, which is the one BYO-inference path that exists.
+Without `-f/--force` (alias `--yolo`) it only _proposes_ changes and writes nothing — a silent no-op in a box you're about to destroy. `cursor-agent bedrock` configures AWS Bedrock, which is the one BYO-inference path that exists.
 
 ## Which agent can use which provider
 
-| | OpenRouter | Anthropic direct | OpenAI direct | Generic OpenAI-compatible gateway | Anthropic-compatible gateway |
-| --- | --- | --- | --- | --- | --- |
-| `claude` | ✅ `/api` | ✅ | ❌ wrong wire | ❌ wrong wire | ✅ `ANTHROPIC_BASE_URL` |
-| `codex` | ⚠️ `/api/v1` + `wire_api="responses"` | ❌ no Anthropic wire | ✅ | ❌ **Responses only** — Chat-Completions is rejected | ❌ |
-| `opencode` | ✅ env var alone | ✅ | ✅ | ✅ `@ai-sdk/openai-compatible` | ✅ `@ai-sdk/anthropic` |
-| `pi` | ✅ built in | ✅ built in | ✅ built in | ✅ `models.json` | ✅ `models.json` |
-| `cursor-agent` | ❌ | ❌ | ❌ | ❌ | ❌ |
+|                | OpenRouter                            | Anthropic direct     | OpenAI direct | Generic OpenAI-compatible gateway                    | Anthropic-compatible gateway |
+| -------------- | ------------------------------------- | -------------------- | ------------- | ---------------------------------------------------- | ---------------------------- |
+| `claude`       | ✅ `/api`                             | ✅                   | ❌ wrong wire | ❌ wrong wire                                        | ✅ `ANTHROPIC_BASE_URL`      |
+| `codex`        | ⚠️ `/api/v1` + `wire_api="responses"` | ❌ no Anthropic wire | ✅            | ❌ **Responses only** — Chat-Completions is rejected | ❌                           |
+| `opencode`     | ✅ env var alone                      | ✅                   | ✅            | ✅ `@ai-sdk/openai-compatible`                       | ✅ `@ai-sdk/anthropic`       |
+| `pi`           | ✅ built in                           | ✅ built in          | ✅ built in   | ✅ `models.json`                                     | ✅ `models.json`             |
+| `cursor-agent` | ❌                                    | ❌                   | ❌            | ❌                                                   | ❌                           |
 
 `opencode` and `pi` are the two that will talk to anything. ⚠️ on codex+OpenRouter: OpenRouter does serve `/api/v1/responses` and codex reaches it correctly, but how completely its Responses implementation supports codex's tool and streaming usage is not established here — try it on a small task before committing a long run to it.
 
@@ -191,12 +196,12 @@ Without `-f/--force` (alias `--yolo`) it only *proposes* changes and writes noth
 
 An agent box holds a provider key and runs model-authored code, which is the case where egress restriction earns its keep. Presets:
 
-| Preset | Opens |
-| --- | --- |
-| `-p openrouter` | `openrouter.ai` |
-| `-p openai` | `api.openai.com` |
-| `-p anthropic` | `api.anthropic.com`, `statsig.anthropic.com` |
-| `-p cursor` | the `*.cursor.sh` / `downloads.cursor.com` set |
+| Preset          | Opens                                          |
+| --------------- | ---------------------------------------------- |
+| `-p openrouter` | `openrouter.ai`                                |
+| `-p openai`     | `api.openai.com`                               |
+| `-p anthropic`  | `api.anthropic.com`, `statsig.anthropic.com`   |
+| `-p cursor`     | the `*.cursor.sh` / `downloads.cursor.com` set |
 
 ```bash
 cos agent -p openrouter -m openai/gpt-5.6-luna -o . claude . 'fix the tests'

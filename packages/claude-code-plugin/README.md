@@ -70,7 +70,7 @@ The plugin is a **thin Claude-facing surface** over the `createos` CLI. It ships
 
 | Piece              | Path                                                     | Role                                                                                                        |
 | ------------------ | -------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------- |
-| **Slash commands** | `commands/*.md`                                          | 22 commands (`offload`, `exec`, `fanout`, `shell`, …), each a thin wrapper that calls `scripts/cos`                 |
+| **Slash commands** | `commands/*.md`                                          | 22 commands (`offload`, `exec`, `fanout`, `shell`, …), each a thin wrapper that calls `scripts/cos`         |
 | **Skill**          | `skills/using-createos-sandbox/SKILL.md` + `references/` | teaches Claude _when_ to reach for the sandbox on its own, with depth loaded on demand                      |
 | **Hooks**          | `hooks/hooks.json` + `scripts/`                          | `SessionStart` publishes the driver's absolute path; `PreToolUse(Bash)` nudges on heavy build/test commands |
 | **Driver**         | `scripts/cos`                                            | the actual logic — staging, egress, keepalive, sync, networking, lifecycle, state                           |
@@ -125,9 +125,9 @@ claude --plugin-dir /path/to/createos-plugin/packages/claude-code-plugin
 | Command                                                                                                   | Summary                                                             |
 | --------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------- |
 | [`offload`](#offload--one-shot) `[flags] <dir> <cmd>`                                                     | one-shot: stage → run (keepalive) → pull → destroy                  |
-| [`exec`](#exec--remote-code-execution) `[-l lang] [-i stdin] [-t secs] [-N] <file\|-> [args]`                      | run one source file (untrusted/ad-hoc) in a throwaway box              |
+| [`exec`](#exec--remote-code-execution) `[-l lang] [-i stdin] [-t secs] [-N] <file\|-> [args]`             | run one source file (untrusted/ad-hoc) in a throwaway box           |
 | [`fanout`](#fanout--parallel-boxes) `[-j N] [flags] <dir> <cmd1> [cmd2] …`                                | run each command in its own throwaway box, in parallel              |
-| [`agent`](#coding-agents) `[flags] <agent> <dir> <prompt>`                                                 | run claude/codex/opencode/pi/cursor on your code in a box           |
+| [`agent`](#coding-agents) `[flags] <agent> <dir> <prompt>`                                                | run claude/codex/opencode/pi/cursor on your code in a box           |
 | [`shell`](#shell--throwaway-linux) `[-s] [-r] [-e\|-p\|-E]`                                               | instant throwaway interactive Linux (destroyed on exit)             |
 | [`up`](#project-box--live-sessions) `[-s] [-r] [-n] [-e\|-p\|-E]`                                         | create/reuse the per-repo project box                               |
 | [`run`](#project-box--live-sessions) `<cmd>`                                                              | exec in the project box (streamed, state persists)                  |
@@ -156,18 +156,18 @@ The core command. Stages a directory into a fresh box, runs a command, optionall
 /createos-sandbox:offload [-p preset] [-e dom] [-E] [-x glob] [-o out] [-w GB] [-K] [-s shape] [-r rootfs] <dir> <cmd>
 ```
 
-| Flag          | Meaning                                                                                     |
-| ------------- | ------------------------------------------------------------------------------------------- |
-| `-s <shape>`  | box size (default `s-1vcpu-1gb`; see [Shapes](#shapes))                                     |
-| `-r <rootfs>` | root filesystem image (default `devbox:1`)                                                  |
-| `-o <out>`    | tar a box-side dir and pull it back to local                                                |
-| `-w <GB>`     | attempt swap (see caveat under [Heavy builds](#heavy-builds))                               |
-| `-K`          | keep the box on a real failure so you can inspect it                                        |
-| `-e <domain>` | allow one egress domain (repeatable)                                                        |
-| `-p <preset>` | egress preset — `python-uv \| rust-cargo \| npm \| github \| openrouter \| openai \| anthropic \| cursor` (repeatable, composes with `-e`) |
-| `-E`          | unrestricted egress (trusted offload)                                                       |
-| `-x <glob>`   | extra upload exclude (repeatable)                                                           |
-| `-v KEY[=VAL]`| declare an env var in the box (repeatable). Bare `KEY` forwards the value from your own shell, so a secret stays out of shell history and the Claude transcript |
+| Flag           | Meaning                                                                                                                                                         |
+| -------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `-s <shape>`   | box size (default `s-1vcpu-1gb`; see [Shapes](#shapes))                                                                                                         |
+| `-r <rootfs>`  | root filesystem image (default `devbox:1`)                                                                                                                      |
+| `-o <out>`     | tar a box-side dir and pull it back to local                                                                                                                    |
+| `-w <GB>`      | attempt swap (see caveat under [Heavy builds](#heavy-builds))                                                                                                   |
+| `-K`           | keep the box on a real failure so you can inspect it                                                                                                            |
+| `-e <domain>`  | allow one egress domain (repeatable)                                                                                                                            |
+| `-p <preset>`  | egress preset — `python-uv \| rust-cargo \| npm \| github \| openrouter \| openai \| anthropic \| cursor` (repeatable, composes with `-e`)                      |
+| `-E`           | unrestricted egress (trusted offload)                                                                                                                           |
+| `-x <glob>`    | extra upload exclude (repeatable)                                                                                                                               |
+| `-v KEY[=VAL]` | declare an env var in the box (repeatable). Bare `KEY` forwards the value from your own shell, so a secret stays out of shell history and the Claude transcript |
 
 ```bash
 # Run a test suite, pull nothing, box auto-destroys
@@ -269,13 +269,13 @@ cos computer help                    # every op, plus `raw` for the rest of the 
 
 The two halves compose: the URL lets **you** watch and take over in a browser while Claude acts through `computer`. `desktop:1` ships the same five agent CLIs `devbox:1` does, so "run an agent on a box and watch its screen" needs no extra setup — see [Coding agents](#coding-agents).
 
-| Gotcha                     | Detail                                                                                                                                                                     |
-| -------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| **The link is a bearer**   | Anyone holding the noVNC URL can drive the desktop, and its token expires (the command prints when). Re-running `desktop` mints a fresh one and invalidates the old link for new connections. |
-| **Boots late**             | The desktop stack starts *after* the box reports `running`. `cos desktop` polls for readiness; a bare `cos up -r desktop:1` does not.                                        |
-| **`409` is ambiguous**     | The control plane returns `desktop_unavailable` both while the desktop is coming up and when an action fails on a live desktop. Not a signal that the box is broken.         |
-| **Raw pixels**             | Coordinates are unscaled X11 pixels of that screen. Read the bounds from `cos computer screen`.                                                                              |
-| **Needs ingress**          | `desktop` enables it for you. `unexpose` turns it off and kills the link.                                                                                                    |
+| Gotcha                   | Detail                                                                                                                                                                                        |
+| ------------------------ | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| **The link is a bearer** | Anyone holding the noVNC URL can drive the desktop, and its token expires (the command prints when). Re-running `desktop` mints a fresh one and invalidates the old link for new connections. |
+| **Boots late**           | The desktop stack starts _after_ the box reports `running`. `cos desktop` polls for readiness; a bare `cos up -r desktop:1` does not.                                                         |
+| **`409` is ambiguous**   | The control plane returns `desktop_unavailable` both while the desktop is coming up and when an action fails on a live desktop. Not a signal that the box is broken.                          |
+| **Raw pixels**           | Coordinates are unscaled X11 pixels of that screen. Read the bounds from `cos computer screen`.                                                                                               |
+| **Needs ingress**        | `desktop` enables it for you. `unexpose` turns it off and kills the link.                                                                                                                     |
 
 > `desktop` and `computer` are the only `cos` commands that call the CreateOS REST API directly — the `createos` CLI has no computer or desktop command yet. Everything else shells out to the CLI as usual. Auth is reused as-is: `CREATEOS_API_KEY` or `~/.createos/.token` go out as `X-Api-Key`, a browser session's JWT as `X-Access-Token`.
 
@@ -328,13 +328,13 @@ Mount **your own** S3 bucket into the project box.
 
 `devbox:1` ships five agent CLIs, so running one in a box needs no install step:
 
-| CLI | Version seen | Third-party providers |
-| --- | --- | --- |
-| `claude` | 2.1.260 | OpenRouter, Anthropic, any Anthropic-compatible endpoint |
-| `codex` | 0.153.4 | OpenRouter, OpenAI, any **Responses**-compatible endpoint |
-| `opencode` | 1.18.30 | anything — catalog providers or a custom base URL |
-| `pi` | 0.85.1 | anything — built-in providers or a custom base URL |
-| `cursor-agent` | 2026.09.10 | **none** — Cursor's own service only |
+| CLI            | Version seen | Third-party providers                                     |
+| -------------- | ------------ | --------------------------------------------------------- |
+| `claude`       | 2.1.260      | OpenRouter, Anthropic, any Anthropic-compatible endpoint  |
+| `codex`        | 0.153.4      | OpenRouter, OpenAI, any **Responses**-compatible endpoint |
+| `opencode`     | 1.18.30      | anything — catalog providers or a custom base URL         |
+| `pi`           | 0.85.1       | anything — built-in providers or a custom base URL        |
+| `cursor-agent` | 2026.09.10   | **none** — Cursor's own service only                      |
 
 `desktop:1` ships the same five.
 
@@ -351,14 +351,14 @@ export OPENROUTER_API_KEY=sk-or-...
 
 It stages the directory, wires the agent to the provider, runs it headless with permission gates off — the microVM is the isolation — pulls the edits back with `-o .`, and destroys the box. `-P` defaults to `openrouter`; `-k` names the host env var holding the key (default `OPENROUTER_API_KEY` / `ANTHROPIC_API_KEY` / `OPENAI_API_KEY` / `CURSOR_API_KEY`). Every `offload` flag works too.
 
-| Gotcha | Detail |
-| ------ | ------ |
-| **`-o .` or it's gone** | Without it the box is destroyed with the agent's edits inside. Run on a clean tree so `git diff` shows what changed. |
-| **Key comes from your shell** | `-v`/`-k` forward the value out of the launching shell. Never paste a provider key into a Claude conversation — it lands in the transcript. |
+| Gotcha                              | Detail                                                                                                                                                  |
+| ----------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| **`-o .` or it's gone**             | Without it the box is destroyed with the agent's edits inside. Run on a clean tree so `git diff` shows what changed.                                    |
+| **Key comes from your shell**       | `-v`/`-k` forward the value out of the launching shell. Never paste a provider key into a Claude conversation — it lands in the transcript.             |
 | **`openrouter.ai/api` ≠ `/api/v1`** | The first is Anthropic-compatible (what `claude` needs), the second OpenAI-shaped (what `codex` and `opencode` need). Wrong one gives an unhelpful 404. |
-| **codex is Responses-only** | `wire_api = "chat"` is rejected at config load, so a plain Chat-Completions gateway (vLLM, LiteLLM in chat mode) cannot drive it. |
-| **cursor-agent can't be repointed** | Its `--endpoint`/`CURSOR_API_ENDPOINT` expects Cursor's own protocol; BYO-key is an IDE-chat-only feature. |
-| **claude needs `IS_SANDBOX=1`** | The box is root, and `--dangerously-skip-permissions` refuses to run as root without it. `cos agent` sets it. |
+| **codex is Responses-only**         | `wire_api = "chat"` is rejected at config load, so a plain Chat-Completions gateway (vLLM, LiteLLM in chat mode) cannot drive it.                       |
+| **cursor-agent can't be repointed** | Its `--endpoint`/`CURSOR_API_ENDPOINT` expects Cursor's own protocol; BYO-key is an IDE-chat-only feature.                                              |
+| **claude needs `IS_SANDBOX=1`**     | The box is root, and `--dangerously-skip-permissions` refuses to run as root without it. `cos agent` sets it.                                           |
 
 Full per-agent env blocks and the wire-protocol matrix live in [`references/coding-agents.md`](./skills/using-createos-sandbox/references/coding-agents.md).
 
@@ -426,11 +426,11 @@ Add more with `-x <glob>` (repeatable). Install dependencies **inside** the box 
 
 `SKILL.md` stays a decision surface; the depth lives in `skills/using-createos-sandbox/references/` and is loaded only when a task needs it:
 
-| Reference                 | Covers                                                                                                                                                                     |
-| ------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `offload-and-egress.md`   | offload flag table, egress presets and enforcement caveats, fanout, upload excludes, heavy-build OOM/disk/bandwidth traps                                                  |
-| `networking.md`           | choosing between tunnel/expose/cluster/vpn, cluster DNS names, expose gotchas, WireGuard setup                                                                             |
-| `lifecycle-and-images.md` | pause/resume, auto-pause tuning, fork caveats, built-in rootfs vs custom templates, env vars, remote editor, self-terminating jobs, single-file transfer, measured timings |
+| Reference                 | Covers                                                                                                                                                                                           |
+| ------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `offload-and-egress.md`   | offload flag table, egress presets and enforcement caveats, fanout, upload excludes, heavy-build OOM/disk/bandwidth traps                                                                        |
+| `networking.md`           | choosing between tunnel/expose/cluster/vpn, cluster DNS names, expose gotchas, WireGuard setup                                                                                                   |
+| `lifecycle-and-images.md` | pause/resume, auto-pause tuning, fork caveats, built-in rootfs vs custom templates, env vars, remote editor, self-terminating jobs, single-file transfer, measured timings                       |
 | `docs.md`                 | index of every live [CreateOS Sandbox docs](https://createos.sh/docs/Sandbox) page as a raw `.md` URL, so Claude fetches the current REST / SDK / CLI reference on demand instead of carrying it |
 
 ## Hooks
