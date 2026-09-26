@@ -1,0 +1,1 @@
+Session: ran archestra on a CreateOS box needing 22h auto-pause + 40GB disk; cos up had no way to set either. Added -P/-d flags, verified live (auto_pause_after_seconds=79200, disk_mib=20480), updated docs, /simplify pass (cosmetic only).
