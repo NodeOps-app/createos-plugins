@@ -1,11 +1,11 @@
 ---
 description: Create or reuse a persistent CreateOS project sandbox for this repo (one active box per git root). Warm box for repeated runs and live sync.
-argument-hint: "[-s shape] [-r rootfs] [-n name] [-e dom|-p preset|-E]"
+argument-hint: "[-s shape] [-r rootfs] [-n name] [-P auto-pause] [-d disk-mib] [-e dom|-p preset|-E]"
 allowed-tools: Bash
 ---
 
-Bring up (or reuse) the project sandbox. State is tracked per git root, so repeated runs reuse the same warm box. Egress defaults to unrestricted, same as `offload`; `-e <domain>` (repeatable) or `-p <preset>` (e.g. `python-uv`, `rust-cargo`, `npm`, `github`) restrict to an exact set, or `-E` to keep it explicitly unrestricted.
+Bring up (or reuse) the project sandbox. State is tracked per git root, so repeated runs reuse the same warm box. Egress defaults to unrestricted, same as `offload`; `-e <domain>` (repeatable) or `-p <preset>` (e.g. `python-uv`, `rust-cargo`, `npm`, `github`) restrict to an exact set, or `-E` to keep it explicitly unrestricted. `-P <dur>` sets the idle auto-pause (default `30m`, max `24h`, e.g. `-P 22h` for a long-lived demo); `-d <MiB>` sets disk size (default 10 GiB — raise it for Docker-heavy apps, e.g. `-d 40960`).
 
 !`"${CLAUDE_PLUGIN_ROOT}/scripts/cos" up $ARGUMENTS`
 
-Confirm the box id/shape above. Remember to `/createos-sandbox:down` when finished — a project box stays running (with a 30 m idle auto-pause backstop).
+Confirm the box id/shape above. Remember to `/createos-sandbox:down` when finished — a project box stays running (with an idle auto-pause backstop — 30 m unless `-P` set).

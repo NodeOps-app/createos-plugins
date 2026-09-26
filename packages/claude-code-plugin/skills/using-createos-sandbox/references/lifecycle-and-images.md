@@ -31,7 +31,7 @@ Through the CLI, both `cos pause` and `cos resume` land around 6–8 seconds end
 
 ## Idle auto-pause
 
-`cos up` creates the project box with a 30-minute idle auto-pause as a cost backstop, so a box forgotten at the end of a session parks itself rather than billing overnight.
+`cos up` creates the project box with a 30-minute idle auto-pause as a cost backstop, so a box forgotten at the end of a session parks itself rather than billing overnight. Override at create time with `cos up -P 22h` (or `--auto-pause`).
 
 The platform accepts anything from 60 seconds to 24 hours, and it can be changed on a live box:
 

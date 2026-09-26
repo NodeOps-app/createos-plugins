@@ -129,6 +129,7 @@ For repeated runs against a warm box, or a dev server you edit against. One box 
 
 ```bash
 cos up -s s-2vcpu-2gb    # create/reuse this project's box
+cos up -P 22h -d 40960   # longer idle auto-pause, 40 GiB disk (Docker-heavy apps)
 cos run 'npm ci'         # warm it — deps persist across runs
 cos sync ~/app /work     # one-way by default (laptop → box), background
 cos run 'npm run dev &'  # start a watcher; it sees synced edits
@@ -237,7 +238,7 @@ Disk data lives in the user's own S3 account and region. `--path-style` is neede
 
 ## Lifecycle and cost
 
-- Ephemeral boxes self-destroy. The project box carries a 30-minute idle auto-pause as a backstop, so a forgotten box parks itself instead of billing overnight. Raise it with `createos sandbox edit <id> --auto-pause 4h` when a box is serving an exposed URL people will hit intermittently — otherwise the demo will look dead between visitors.
+- Ephemeral boxes self-destroy. The project box carries a 30-minute idle auto-pause as a backstop, so a forgotten box parks itself instead of billing overnight. Set it at create time with `cos up -P 22h` (max `24h`), or on a live box with `createos sandbox edit <id> --auto-pause 4h`, when a box is serving an exposed URL people will hit intermittently — otherwise the demo will look dead between visitors.
 - Finish a live session with `cos pause` (keeping the warm state) or `cos down` (done for good). Don't leave a running box behind either way.
 - **Concurrency is limited** — external keys have been observed to allow 2 boxes running at once, with a daily creation cap. This is observed behaviour rather than published policy, so budget `cluster` and `fanout` against it and expect excess jobs to queue rather than fail.
 - If a shape is rejected, the error names the allowed list — pick from it, or run `createos sandbox shapes`.

@@ -12,7 +12,7 @@
 #   cos install [target]                        symlink this script onto PATH (default ~/.local/bin/cos)
 #   cos offload [flags] <local-dir> <cmd>       throwaway box: stage→run→pull→destroy
 #   cos agent [flags] <agent> <dir> <prompt>    run claude|codex|opencode|pi|cursor in a box
-#   cos up   [-s][-r][-n][-e|-p|-E][-a]         create/reuse a project box (-a to adopt)
+#   cos up   [-s][-r][-n][-P][-d][-e|-p|-E][-a] create/reuse a project box (-a to adopt)
 #   cos run  <cmd>                              run in the project box (keepalive)
 #   cos sync [-2|-M][-x] <local-dir> [remote]   start file sync into the project box (bg)
 #   cos pause | cos resume                      park the warm box at zero compute cost / bring it back
@@ -51,7 +51,7 @@ strip_ansi(){ perl -pe 's/\e\[[0-9;?]*[ -\/]*[@-~]//g' 2>/dev/null || cat; }
 NORMA=()
 _mapl(){ case "$1" in
   --shape) echo -s;; --rootfs) echo -r;; --out|--output) echo -o;; --name) echo -n;;
-  --egress) echo -e;; --egress-preset) echo -p;; --egress-all) echo -E;; --env) echo -v;; --adopt) echo -a;;
+  --egress) echo -e;; --egress-preset) echo -p;; --egress-all) echo -E;; --env) echo -v;; --adopt) echo -a;; --auto-pause) echo -P;; --disk-mib) echo -d;;
   --exclude) echo -x;; --keep-on-fail) echo -K;; --swap) echo -w;;
   --two-way) echo -2;; --mirror) echo -M;; --forks) echo -f;; *) echo "$1";; esac; }
 _norm(){ NORMA=(); while [ $# -gt 0 ]; do case "$1" in
@@ -116,7 +116,8 @@ wait_running(){ local id=$1 to=${2:-30} i s
 
 create_box(){ # $1=name $2=shape $3=rootfs ; extra --egress in COS_EGRESS array
   local name=$1 shape=$2 rootfs=$3
-  local args=(sandbox create --name "$name" --shape "$shape" --rootfs "$rootfs" --auto-pause 30m)
+  local args=(sandbox create --name "$name" --shape "$shape" --rootfs "$rootfs" --auto-pause "${COS_AUTOPAUSE:-30m}")
+  [ -n "${COS_DISK:-}" ] && args+=(--disk-mib "$COS_DISK")
   [ -n "${COS_NET:-}" ] && args+=(--network "${COS_NET}")
   [ "${#COS_EGRESS[@]}" -gt 0 ] && args+=("${COS_EGRESS[@]}")
   [ "${#COS_ENV[@]}" -gt 0 ] && args+=("${COS_ENV[@]}")
@@ -547,16 +548,17 @@ EOF
 cmd_up(){
   _norm "$@"; set -- ${NORMA[@]+"${NORMA[@]}"}
   local shape=s-2vcpu-2gb rootfs=devbox:1 name="" egress_all=0 adopt=0; COS_EGRESS=(); local -a _d; local OPTIND=1 o doms d
-  while getopts "s:r:n:e:p:v:Eah" o; do case $o in
+  while getopts "s:r:n:e:p:v:P:d:Eah" o; do case $o in
     s) shape=$OPTARG;; r) rootfs=$OPTARG;; n) name=$OPTARG;;
+    P) COS_AUTOPAUSE=$OPTARG;; d) COS_DISK=$OPTARG;;
     v) add_env "$OPTARG";;
     e) COS_EGRESS+=(--egress "$OPTARG");;
     p) doms=$(egress_preset "$OPTARG") || die "unknown egress preset '$OPTARG' (have: $EGRESS_PRESETS)"
        read -ra _d <<<"$doms"; for d in "${_d[@]}"; do COS_EGRESS+=(--egress "$d"); done;;
     E) egress_all=1;;
     a) adopt=1;;
-    h) echo "cos up [-s shape] [-r rootfs] [-n name] [-e dom|-p preset|-E] [-v KEY[=VAL]] [-a]"; exit 0;;
-    *) die "usage: cos up [-s shape] [-r rootfs] [-n name] [-e dom|-p preset|-E] [-v KEY[=VAL]] [-a]";; esac; done
+    h) echo "cos up [-s shape] [-r rootfs] [-n name] [-P auto-pause] [-d disk-mib] [-e dom|-p preset|-E] [-v KEY[=VAL]] [-a]"; exit 0;;
+    *) die "usage: cos up [-s shape] [-r rootfs] [-n name] [-P auto-pause] [-d disk-mib] [-e dom|-p preset|-E] [-v KEY[=VAL]] [-a]";; esac; done
   [ "$egress_all" = 1 ] && COS_EGRESS=()
   lock_state   # held across check → create → write; released on return via EXIT trap
   local cur curname; cur=$(state_get id); curname=$(state_get name)
@@ -1425,7 +1427,7 @@ cos — CreateOS sandbox as remote compute.  (run `cos install` to put `cos` on 
                                       against OpenRouter / any OpenAI- or Anthropic-compatible provider (cos agent -h)
   cos fanout [-j N][flags] <dir> <cmd>...   run each <cmd> in its own throwaway box, in parallel  (cos fanout -h)
   cos shell [-s][-r][-e|-p|-E]        instant throwaway interactive Linux (destroyed on exit)
-  cos up   [-s][-r][-n][-e|-p|-E][-a] create/reuse project box (-a adopt a box cos didn't create)
+  cos up   [-s][-r][-n][-P][-d][-e|-p|-E][-a] create/reuse project box (-a adopt a box cos didn't create)
   cos run  <cmd>                      run in project box (keepalive; ONE string, no '--' separator)
   cos sync [-2|-M][-x glob] <dir> [remote]   file sync (default one-way, -2 two-way, -M mirror; big dirs excluded)
   cos tunnel <remote> [local]         forward box port → 127.0.0.1 (background)
