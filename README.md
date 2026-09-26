@@ -74,15 +74,38 @@ codex plugin add createos-sandbox-codex --marketplace createos
 codex
 ```
 
-**OpenCode:**
+**Claude Desktop (Code tab):**
+
+1. Install the [`createos` CLI](https://github.com/NodeOps-app/createos-cli) and run `createos login` in a terminal.
+2. Open Claude Desktop → **Code** tab → pick a **Local** environment (the plugin runs `bash` + `createos` on your machine; it does not work in Chat or remote/cloud sessions).
+3. In the prompt box, run:
+   ```
+   /plugin marketplace add NodeOps-app/createos-plugin
+   /plugin install createos-sandbox@createos
+   ```
+   Or use **+ → Plugins → Add marketplace** with `NodeOps-app/createos-plugin`, then install **createos-sandbox**.
+4. Start a new session. Desktop shares `~/.claude` with the CLI, so a plugin already installed via `claude` shows up without these steps.
+
+**Codex Desktop app:**
+
+1. Install the `createos` CLI and run `createos login`.
+2. Codex Desktop shares `~/.codex` with the Codex CLI, so the simplest path is to install once from a terminal:
+   ```bash
+   codex plugin marketplace add NodeOps-app/createos-plugin
+   codex plugin add createos-sandbox-codex --marketplace createos
+   ```
+   Or in the app: **Plugins → Add marketplace** → `NodeOps-app/createos-plugin` → install **createos-sandbox-codex**.
+3. Restart the app / open a new thread on a **local** project (cloud tasks can't reach your `createos` login).
+
+**OpenCode V2 / opencode2:**
 
 ```bash
-# 1. Install the plugin
-opencode plugin @createos/opencode --global
-
-# 2. Launch opencode — sandbox tools are available automatically
-opencode
+# Install dependencies in this checkout
+bun install --cwd packages/opencode-plugin
+createos login
 ```
+
+Add `"plugins": ["./packages/opencode-plugin"]` to your `opencode.jsonc` (adjust the path to the checkout). Local mode exposes sandbox tools; set plugin options `mode: "remote"` and `sync: "once"` to run shell/file tools against a copied project. See the [V2 setup guide](./packages/opencode-plugin/README.md).
 
 **DeepSeek Harness:**
 
@@ -98,7 +121,7 @@ export CREATEOS_SANDBOX_SHAPE='s-2vcpu-2gb'
 dsh web
 ```
 
-The Claude Code, Codex, Pi, and OpenCode integrations use the `createos` CLI, which **auto-installs** on first use. Sign in once with `createos login` (browser OAuth, run it in your own terminal) or `export CREATEOS_API_KEY=<key>`; check with `cos auth`. The DeepSeek Harness integration uses `@nodeops-createos/sandbox` and `CREATEOS_SANDBOX_*` environment variables. Prefer a local checkout? See [Install](#install).
+The Claude Code, Codex, Pi, and OpenCode integrations use the `createos` CLI. Claude Code, Codex, and Pi can auto-install it; OpenCode V2 requires it on the server's PATH. Sign in once with `createos login` (browser OAuth, run it in your own terminal) or `export CREATEOS_API_KEY=<key>`. The DeepSeek Harness integration uses `@nodeops-createos/sandbox` and `CREATEOS_SANDBOX_*` environment variables. Prefer a local checkout? See [Install](#install).
 
 ## Packages
 
@@ -107,7 +130,7 @@ The Claude Code, Codex, Pi, and OpenCode integrations use the `createos` CLI, wh
 | [**claude-code-plugin**](./packages/claude-code-plugin)       | Hooks-based Claude Code plugin — offload, parallel fanout, scratch shell, reusable box with sync, port tunnel, public HTTPS expose, private-network clusters, BYO-S3 disk mounts, WireGuard VPN, and snapshot/fork — all driving the authed `createos` CLI. |
 | [**pi-extension**](./packages/pi-extension)                   | Pi coding agent extension with all 33 `sandbox_*` tools for lifecycle, configuration, port tunnels, file sync, private networks, persistent disks, and device VPN. Built-in tools route remotely only with `--inside-createos-sandbox`.                     |
 | [**createos-sandbox-codex**](./packages/codex-plugin)         | Codex plugin — the `cos` driver, the `using-createos-sandbox` skill, and session-start / offload-hint hooks. Same engine as the Claude Code plugin.                                                                                                        |
-| [**@createos/opencode**](./packages/opencode-plugin)          | OpenCode plugin with 33 sandbox tools (`sandbox_exec`, `sandbox_push`, `sandbox_pull`, networks, disks, VPN, sync) and system prompt injection for sandbox-first workflows.                                                                                 |
+| [**@createos/opencode**](./packages/opencode-plugin)          | Native OpenCode V2 plugin with 54 sandbox tools, opt-in remote shell/file routing, session-scoped persistence, managed processes, and a public RPC contract. |
 | [**@nodeops-createos/dsh-createos**](./packages/dsh-createos) | DeepSeek Harness bundle that replaces `ctx.fs` and `ctx.subprocess` together, so Bash, file, LSP, and PTY consumers operate inside one CreateOS sandbox without provider-specific tool forks.                                                               |
 | [**createos.sandbox**](./packages/herdr-plugin)               | Herdr plugin that runs Claude Code, Codex, OpenCode, Pi, or Cursor **inside** a CreateOS Sandbox and attaches its PTY to a Herdr pane. One pane maps to one sandbox, with filtered upload, two-way sync, patch apply back, and Herdr agent detection.        |
 | [**langflow-sandbox-createos**](./packages/langflow-sandbox-createos) | Langflow integration (Python, pip) — three surfaces from one install: a **sandbox backend** hardening the Python Interpreter, a **CreateOS Sandbox component** with guest reuse and file return, and an **executor** that runs a whole flow graph in a microVM. A Langflow host with no KVM/HVF still gets hardware isolation.                                  |
@@ -197,17 +220,20 @@ Pi credentials, settings, and sessions stay local.
 
 Full tool inventory lives in the [**Pi Extension README**](./packages/pi-extension/README.md).
 
-## OpenCode — tools at a glance (40)
+## OpenCode V2 — tools at a glance (54)
 
 | Category            | Tools                                                                                                                  |
 | ------------------- | ---------------------------------------------------------------------------------------------------------------------- |
-| **Execute & Files** | `sandbox_exec`, `sandbox_pull`, `sandbox_push`                                                                         |
+| **Execute & Files** | `sandbox_exec`, `sandbox_run_code`, `sandbox_offload`, `sandbox_fanout`, `sandbox_read/write/edit/patch/glob/grep`, `sandbox_pull`, `sandbox_push` |
 | **Lifecycle**       | `sandbox_create`, `sandbox_list`, `sandbox_info`, `sandbox_pause`, `sandbox_resume`, `sandbox_fork`, `sandbox_destroy` |
 | **Config**          | `sandbox_ingress`, `sandbox_firewall`, `sandbox_bandwidth`, `sandbox_shapes`, `sandbox_images`                         |
-| **Ports & Sync**    | `sandbox_preview_url`, `sandbox_tunnel`, `sandbox_sync`                                                                |
+| **Ports & Sync**    | `sandbox_preview_url`, `sandbox_tunnel`, `sandbox_sync`, `sandbox_transport_stop` |
 | **Networks**        | `sandbox_network_create/list/show/attach/detach/delete`                                                                |
 | **Disks**           | `sandbox_disk_create/list/show/delete/attach/detach`                                                                   |
-| **Device VPN**      | `sandbox_device_register/status/attach/detach`, `sandbox_vpn_up`                                                       |
+| **Device VPN**      | `sandbox_device_register/status`, `sandbox_vpn_up`; network attach/detach also supports device IDs |
+| **Processes**       | `sandbox_process_start/list/get/output/stop/input/close_stdin` |
+| **Desktop**         | `sandbox_desktop`, `sandbox_computer`, `sandbox_screenshot` |
+| **Session**         | `sandbox_status`, `/sandbox`, `/sandbox-release` |
 
 Full reference in [opencode-plugin/README.md](./packages/opencode-plugin/README.md).
 
@@ -329,7 +355,7 @@ Issues and PRs welcome. The Claude Code, Codex, Pi, and OpenCode plugins are thi
 
 - [createos.sh](https://createos.sh) — CreateOS platform
 - [Claude Code plugins](https://docs.claude.com/en/docs/claude-code) — how plugins & marketplaces work
-- [OpenCode plugins](https://opencode.ai/docs/plugins/) — OpenCode plugin docs
+- [OpenCode V2 plugins](https://opencode.ai/v2/docs/build/plugins/) — OpenCode plugin docs
 - [Claude Code plugin README](./packages/claude-code-plugin/README.md)
 - [Pi extension README](./packages/pi-extension/README.md)
 - [Codex plugin README](./packages/codex-plugin/README.md)
