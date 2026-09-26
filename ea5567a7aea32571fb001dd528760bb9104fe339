@@ -1,0 +1,1 @@
+Session: added Claude Desktop + Codex Desktop install steps to README; ran /simplify subagent (safe edits in opencode-plugin: cached guest.py, parallel uploads, errorText reuse); bun test 34/34, tsc clean; committed 3 atomic commits.
