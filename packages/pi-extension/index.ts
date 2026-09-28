@@ -12,7 +12,8 @@ import {
 } from "@earendil-works/pi-coding-agent";
 
 import * as cli from "./src/cli.ts";
-import { sandboxExec, cleanupTempKey, autoInstallCLI } from "./src/cli.ts";
+import { sandboxExec, cleanupTempKey } from "./src/cli.ts";
+import { onboard, type Onboarding } from "./src/onboard.ts";
 import {
   selectStartupSync,
   startProjectWatch,
@@ -38,7 +39,7 @@ interface ActiveSandbox {
 /** The user's local working directory (where they launched Pi from). */
 const hostCwd = process.cwd();
 
-export default function (pi: ExtensionAPI) {
+export default function (pi: ExtensionAPI, onboardCLI = onboard) {
   pi.registerFlag("inside-createos-sandbox", {
     description: "CreateOS sandbox: run Pi inside it",
     type: "boolean",
@@ -71,6 +72,9 @@ export default function (pi: ExtensionAPI) {
   let active: ActiveSandbox | null = null;
   let projectWatch: ProjectWatch | undefined;
   const syncedSkillDirectories = new Set<string>();
+  // Once per process, for every session: install/upgrade the CLI and start
+  // sign-in, so the agent knows up front whether `createos` is usable.
+  let onboarding: Promise<Onboarding> | undefined;
 
   registerTools(pi, () => (active ? { sandboxId: active.sandboxId, cwd: active.cwd } : null));
 
@@ -304,6 +308,10 @@ export default function (pi: ExtensionAPI) {
   // --- Lifecycle ---
 
   pi.on("session_start", async (event, ctx) => {
+    onboarding ??= onboardCLI().then((result) => {
+      if (result.notice) ctx.ui.notify(result.notice, "warning");
+      return result;
+    });
     if (pi.getFlag("inside-createos-sandbox") !== true) return;
     if (active) return;
 
@@ -318,23 +326,7 @@ export default function (pi: ExtensionAPI) {
       return;
     }
 
-    if (!(await cli.isCreateOSInstalled(pi))) {
-      setStatus(ctx, "☁ createos · installing CLI…");
-      ctx.ui.notify("CreateOS CLI not found — installing automatically…", "info");
-      if (!(await autoInstallCLI(pi))) {
-        ctx.ui.notify(
-          "Failed to auto-install CreateOS CLI. Install manually: curl -sfL https://raw.githubusercontent.com/NodeOps-app/createos-cli/main/install.sh | sh",
-          "error",
-        );
-        setStatus(ctx, undefined);
-        return;
-      }
-      ctx.ui.notify("CreateOS CLI installed successfully.", "info");
-    }
-    if (!(await cli.isLoggedIn(pi))) {
-      ctx.ui.notify("Not logged in. Run: createos login", "error");
-      return;
-    }
+    if (!(await onboarding).ready) return;
 
     const persisted = ctx.sessionManager.getSessionFile() !== undefined;
     const sessionId = ctx.sessionManager.getSessionId();
@@ -413,8 +405,9 @@ export default function (pi: ExtensionAPI) {
   });
 
   pi.on("before_agent_start", async (event, ctx) => {
+    const cliStatus = onboarding ? `\n\n--- CreateOS CLI ---\n${(await onboarding).status}` : "";
     const sandbox = active;
-    if (!sandbox) return;
+    if (!sandbox) return cliStatus ? { systemPrompt: event.systemPrompt + cliStatus } : undefined;
 
     const pendingSkills = (event.systemPromptOptions.skills ?? []).filter(
       ({ baseDir }) => !syncedSkillDirectories.has(baseDir),
@@ -444,6 +437,7 @@ export default function (pi: ExtensionAPI) {
       "\n- Port access → sandbox_preview_url (public URL) > sandbox_tunnel (localhost) > device VPN (last resort)" +
       "\n- Multi-node → sandbox_network_create + sandbox_create with network + sandbox_exec on other sandboxes" +
       "\n--- End CreateOS ---";
+    systemPrompt += cliStatus;
     return { systemPrompt };
   });
 
