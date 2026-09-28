@@ -1,0 +1,13 @@
+Session notes (cli-setup-startup-checks):
+- Goal: harness-aware createos CLI onboarding for Claude Code, Codex, Pi, OpenCode.
+  Install/upgrade via install.sh; skip login if CREATEOS_API_KEY; else `createos login`
+  driven in hidden tmux with browser option.
+- Findings: CLI saves any pasted API token unvalidated (so file checks are unreliable;
+  use `whoami`). On headless hosts `createos login` prints "Could not open browser" and
+  the session dies; OAuth callback is localhost, so only token login works there.
+- CLI bug (not fixed here, createos-cli): OAuth session always wins over .token, so a
+  dead .oauth makes `login --token` "succeed" while every command fails.
+- installer pitfall: `sh - </dev/null` reads the script from /dev/null (no-op).
+- Verified: 15 scenarios, each in its own CreateOS sandbox via `cos fanout -j 2`
+  (fresh install, rerun, no tmux, COS_NO_AUTOINSTALL, API key, bogus token, non-root,
+  upgrade in place, codex hook, preflight hint, headless, TS fresh/headless/apikey/custom bin).
