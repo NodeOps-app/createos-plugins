@@ -113,11 +113,11 @@ claude --plugin-dir /path/to/createos-plugin/packages/claude-code-plugin
 
 ## Requirements
 
-- **A [CreateOS](https://createos.sh) account.** The `createos` CLI **auto-installs** if missing — on first use `cos` runs the official one-liner (`curl -sfL …/install.sh | sh -`). Opt out with `COS_NO_AUTOINSTALL=1`; override the install source with `COS_CLI_INSTALL_URL`.
+- **A [CreateOS](https://createos.sh) account.** At session start the `SessionStart` hook runs `cos setup`, which installs the `createos` CLI with the official one-liner (`curl -sfL …/install.sh | sh -`) if missing, and otherwise re-runs it in the background to upgrade in place (same directory, never `sudo`). Opt out with `COS_NO_AUTOINSTALL=1`; override the install source with `COS_CLI_INSTALL_URL`. A binary set via `COS_CLI` is never auto-installed. Re-run `cos setup` by hand any time.
 - **Sign in, one of two ways.** Verify either with `cos auth`.
-  - **Browser (recommended)** — run `createos login` **in your own terminal** and pick "Sign in with browser". This is an interactive prompt, so Claude cannot run it for you; the OAuth session lands in `~/.createos/.oauth`.
-  - **API key** — `export CREATEOS_API_KEY=<key>` (grab one from the [dashboard](https://createos.sh)). Set it and browser login is skipped entirely — the right choice for CI, headless boxes, and devcontainers. Export it in the shell that launches Claude Code; never paste it into a Claude conversation, where it would be written to the transcript.
-- **Host tools:** `jq`, `tar`, `bash`, `base64` (required); `perl` (ANSI stripping / path resolution); `shasum` (falls back to `sha1sum`/`sha256sum`); `curl` (one-time CLI install only).
+  - **Browser (recommended)** — if `createos whoami` says you are signed out and `tmux` is available, `cos setup` starts `createos login` in a hidden tmux session (`createos-login`), picks "Sign in with browser", and your default browser opens the CreateOS sign-in page — finish it there (a fallback URL is printed if no browser opens). Without `tmux`, run `createos login` **in your own terminal** and pick "Sign in with browser". The OAuth session lands in `~/.createos/.oauth`.
+  - **API key** — `export CREATEOS_API_KEY=<key>` (grab one from the [dashboard](https://createos.sh)). Set it and browser sign-in is skipped entirely — the right choice for CI, headless boxes, and devcontainers. Export it in the shell that launches Claude Code; never paste it into a Claude conversation, where it would be written to the transcript. To store a token via the CLI instead, `tmux kill-session -t createos-login`, then run `createos login` yourself and pick "Sign in with API token".
+- **Host tools:** `jq`, `tar`, `bash`, `base64` (required); `perl` (ANSI stripping / path resolution); `shasum` (falls back to `sha1sum`/`sha256sum`); `curl` (CLI install/upgrade); `tmux` (optional, automatic browser sign-in).
 - **Optional per feature:** `wg-quick` + `sudo` for [`vpn`](#networking); the current `createos` CLI for sync `--mode`/`--exclude` (an old CLI falls back to two-way with a warning).
 
 ## Command reference
@@ -435,7 +435,7 @@ Add more with `-x <glob>` (repeatable). Install dependencies **inside** the box 
 
 ## Hooks
 
-- **`SessionStart`** (`scripts/session-start.sh`) publishes the driver's absolute path into Claude's context. This is what makes autonomous, skill-driven offload work at all — see [How it works](#how-it-works) and [ADR-0001](../docs/adr/0001-cos-bash-driver.md). It writes nothing to disk.
+- **`SessionStart`** (`scripts/session-start.sh`) publishes the driver's absolute path into Claude's context. This is what makes autonomous, skill-driven offload work at all — see [How it works](#how-it-works) and [ADR-0001](../docs/adr/0001-cos-bash-driver.md). It also runs `cos setup` (CLI install/upgrade, browser sign-in if signed out) and adds the resulting CLI version/path and sign-in status to Claude's context.
 - **`PreToolUse(Bash)`** (`scripts/offload-hint.sh`) watches for heavy build/test commands (`npm ci`, `make`, `pytest`, `go test`, `cargo build`, `pip install`, …) and adds a one-line nudge to consider `/createos-sandbox:offload`. **The command still runs** — the hook only suggests — and it skips sandbox/git/docker commands. Silence it with `COS_NO_HINT=1`.
 
 ## Direct CLI cookbook
@@ -444,6 +444,7 @@ Add more with `-x <glob>` (repeatable). Install dependencies **inside** the box 
 
 ```bash
 cos install                                   # symlink onto PATH (once); createos CLI auto-installs on first use
+cos setup                                     # install/upgrade the createos CLI; start browser sign-in if signed out
 cos offload -p python-uv . 'uv sync --frozen --group dev && uv run pytest -q'
 cos offload -p python-uv -p rust-cargo -x target -o dist . 'uv sync --frozen && uv run pytest -q'
 cos up && cos run 'npm ci' && cos sync ~/app /work    # reusable box + one-way sync
@@ -484,7 +485,8 @@ cos down                                             # stops sync/tunnels, destr
 
 ## Troubleshooting
 
-- **`cos: not signed in to CreateOS`** — run `createos login` in your own terminal (not via Claude — it needs a TTY), or `export CREATEOS_API_KEY=<key>`. Verify with `cos auth`.
+- **`cos: not signed in to CreateOS`** — run `cos setup` (starts browser sign-in in a hidden tmux session), or `createos login` in your own terminal (not via Claude — it needs a TTY), or `export CREATEOS_API_KEY=<key>`. Verify with `cos auth`.
+- **Browser sign-in never opened** — use the fallback URL `cos setup` printed, or `tmux kill-session -t createos-login` and run `createos login` yourself.
 - **`createos: command not found`** — the auto-install landed outside `PATH`; add `~/.local/bin` to it and retry.
 - **`cos: command not found`** — run `cos install` by its full path (the `SessionStart` hook prints that path into Claude's context), or call `cos` by full path. Do not type `${CLAUDE_PLUGIN_ROOT}` into a Bash command — that variable is unset in the Bash tool's environment and the path resolves to `/scripts/cos`.
 - **`/scripts/cos: no such file`** — same cause. Never work around it by rebuilding the offload from raw `createos sandbox create/push/exec`: that drops egress restriction, keepalive, auto-destroy, and the auth preflight.

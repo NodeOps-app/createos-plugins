@@ -76,33 +76,30 @@ codex
 
 **Claude Desktop (Code tab):**
 
-1. Install the [`createos` CLI](https://github.com/NodeOps-app/createos-cli) and run `createos login` in a terminal.
-2. Open Claude Desktop → **Code** tab → pick a **Local** environment (the plugin runs `bash` + `createos` on your machine; it does not work in Chat or remote/cloud sessions).
-3. In the prompt box, run:
+1. Open Claude Desktop → **Code** tab → pick a **Local** environment (the plugin runs `bash` + `createos` on your machine; it does not work in Chat or remote/cloud sessions).
+2. In the prompt box, run:
    ```
    /plugin marketplace add NodeOps-app/createos-plugin
    /plugin install createos-sandbox@createos
    ```
    Or use **+ → Plugins → Add marketplace** with `NodeOps-app/createos-plugin`, then install **createos-sandbox**.
-4. Start a new session. Desktop shares `~/.claude` with the CLI, so a plugin already installed via `claude` shows up without these steps.
+3. Start a new session. The plugin installs the [`createos` CLI](https://github.com/NodeOps-app/createos-cli) if missing and, if you are signed out, opens CreateOS sign-in in your browser. Desktop shares `~/.claude` with the CLI, so a plugin already installed via `claude` shows up without these steps.
 
 **Codex Desktop app:**
 
-1. Install the `createos` CLI and run `createos login`.
-2. Codex Desktop shares `~/.codex` with the Codex CLI, so the simplest path is to install once from a terminal:
+1. Codex Desktop shares `~/.codex` with the Codex CLI, so the simplest path is to install once from a terminal:
    ```bash
    codex plugin marketplace add NodeOps-app/createos-plugin
    codex plugin add createos-sandbox-codex --marketplace createos
    ```
    Or in the app: **Plugins → Add marketplace** → `NodeOps-app/createos-plugin` → install **createos-sandbox-codex**.
-3. Restart the app / open a new thread on a **local** project (cloud tasks can't reach your `createos` login).
+2. Restart the app / open a new thread on a **local** project (cloud tasks can't reach your `createos` login). The session-start hook installs the `createos` CLI if missing and starts browser sign-in if you are signed out.
 
 **OpenCode V2 / opencode2:**
 
 ```bash
 # Install dependencies in this checkout
 bun install --cwd packages/opencode-plugin
-createos login
 ```
 
 Add `"plugins": ["./packages/opencode-plugin"]` to your `opencode.jsonc` (adjust the path to the checkout). Local mode exposes sandbox tools; set plugin options `mode: "remote"` and `sync: "once"` to run shell/file tools against a copied project. See the [V2 setup guide](./packages/opencode-plugin/README.md).
@@ -121,7 +118,7 @@ export CREATEOS_SANDBOX_SHAPE='s-2vcpu-2gb'
 dsh web
 ```
 
-The Claude Code, Codex, Pi, and OpenCode integrations use the `createos` CLI. Claude Code, Codex, and Pi can auto-install it; OpenCode V2 requires it on the server's PATH. Sign in once with `createos login` (browser OAuth, run it in your own terminal) or `export CREATEOS_API_KEY=<key>`. The DeepSeek Harness integration uses `@nodeops-createos/sandbox` and `CREATEOS_SANDBOX_*` environment variables. Prefer a local checkout? See [Install](#install).
+The Claude Code, Codex, Pi, and OpenCode integrations use the `createos` CLI. All four install it if missing (and upgrade it in place) at session start, then, if you are signed out and `tmux` is available, start `createos login` in a hidden tmux session so your browser opens the CreateOS sign-in page. Set `CREATEOS_API_KEY=<key>` to skip browser sign-in, or `COS_NO_AUTOINSTALL=1` to skip the install. The DeepSeek Harness integration uses `@nodeops-createos/sandbox` and `CREATEOS_SANDBOX_*` environment variables. Prefer a local checkout? See [Install](#install).
 
 ## Packages
 
@@ -281,10 +278,10 @@ claude --plugin-dir /path/to/createos-plugin/packages/claude-code-plugin
 
 ## Requirements
 
-- **[CreateOS](https://createos.sh) account** — the `createos` CLI auto-installs on first use. Opt out with `COS_NO_AUTOINSTALL=1`.
-- **Sign-in** — `createos login` in your own terminal (interactive browser OAuth; Claude can't drive a TTY prompt), or `export CREATEOS_API_KEY=<key>` to skip the browser entirely. `cos auth` reports which is active.
+- **[CreateOS](https://createos.sh) account** — the `SessionStart` hook runs `cos setup`, which installs the `createos` CLI if missing and upgrades it in place otherwise. Opt out with `COS_NO_AUTOINSTALL=1`.
+- **Sign-in** — if you are signed out and `tmux` is available, `cos setup` starts `createos login` in a hidden tmux session and your browser opens the CreateOS sign-in page; finish it there. Without `tmux`, run `createos login` in your own terminal. `export CREATEOS_API_KEY=<key>` skips browser sign-in entirely. `cos auth` reports which is active.
 - **DeepSeek Harness env:** `CREATEOS_SANDBOX_API_KEY` and `CREATEOS_SANDBOX_SHAPE`; optional `CREATEOS_SANDBOX_BASE_URL` and `CREATEOS_SANDBOX_ROOTFS`.
-- **Host tools:** `jq`, `tar`, `bash`, `base64`; `perl` for ANSI/path handling; `curl` for the one-time CLI install.
+- **Host tools:** `jq`, `tar`, `bash`, `base64`; `perl` for ANSI/path handling; `curl` for the CLI install; `tmux` (optional) for automatic browser sign-in.
 
 ## Safety
 

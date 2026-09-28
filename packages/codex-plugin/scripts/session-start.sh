@@ -34,12 +34,20 @@ else
   where="\`cos\` is NOT on PATH. Call it by this absolute path, or run \`$cos install\` once to symlink it into ~/.local/bin."
 fi
 
+# Onboarding runs first so the agent knows up front whether the CLI is
+# installed and signed in, instead of finding out mid-task. `setup` never
+# prompts; a signed-out user gets browser sign-in started for them.
+cli_status=$("$cos" setup 2>&1 || true)
+
 # The verb rule lives here, not only in the skill. Measured behaviour: on an
 # autonomous "run this off my machine" task the model reaches straight for the
 # shell and never invokes the skill, so SKILL.md's guidance is not in context
 # when the decision is made. It then picks `up`+`run` and hand-rolls tar/base64
 # staging — work `offload` already does.
-msg="[createos-sandbox] The sandbox driver is at: $cos
+msg="[createos-sandbox] CreateOS CLI status:
+$cli_status
+
+The sandbox driver is at: $cos
 $where
 If the driver cannot be run, stop and say so; do not substitute raw \`createos sandbox\` primitives, which drop egress restriction, keepalive, auto-destroy, and the auth preflight.
 

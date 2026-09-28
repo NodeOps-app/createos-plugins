@@ -3,7 +3,7 @@
 #
 # Two canonical trees:
 #   packages/claude-code-plugin/  — the `cos` bash driver, the skill, the hooks
-#   packages/shared/              — sandbox-engine.ts, the same semantics in TS
+#   packages/shared/              — sandbox-engine.ts + onboard.ts, the same semantics in TS
 #
 # Symlinks would be the obvious answer and do not work: the Codex plugin
 # installer copies regular files only, so a symlinked repo installs with no
@@ -27,6 +27,8 @@ PAIRS=(
   "packages/claude-code-plugin/skills/using-createos-sandbox/references/networking.md:packages/codex-plugin/skills/using-createos-sandbox/references/networking.md"
   "packages/claude-code-plugin/skills/using-createos-sandbox/references/offload-and-egress.md:packages/codex-plugin/skills/using-createos-sandbox/references/offload-and-egress.md"
   "packages/shared/sandbox-engine.ts:packages/pi-extension/src/sandbox-engine.ts"
+  "packages/shared/onboard.ts:packages/pi-extension/src/onboard.ts"
+  "packages/shared/onboard.ts:packages/opencode-plugin/src/onboard.ts"
 )
 
 check=0

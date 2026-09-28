@@ -49,7 +49,8 @@ function createExtensionHarness(flagValues: Record<string, boolean> = {}) {
     },
   };
 
-  createosExtension(pi as never);
+  // Real onboarding shells out (install, whoami, tmux login); keep tests hermetic.
+  createosExtension(pi as never, async () => ({ ready: false, status: "", notice: "" }));
 
   return {
     execCalls,
@@ -98,10 +99,7 @@ test("uses --inside-createos-sandbox as the only remote-mode flag", async () => 
     },
   });
   await remote.start();
-  assert.deepEqual(remote.execCalls, [
-    { command: "createos", args: ["version"] },
-    { command: "createos", args: ["-o", "json", "sandbox", "shapes"] },
-  ]);
+  assert.deepEqual(remote.execCalls, []);
 });
 
 test("allows global network commands without an active sandbox", async () => {

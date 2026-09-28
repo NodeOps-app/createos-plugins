@@ -10,11 +10,15 @@ import { object, text } from "./util.ts";
 import { stage } from "./sync.ts";
 import { basename, dirname, isAbsolute } from "node:path";
 import { stat } from "node:fs/promises";
+import { onboard, type Onboarding } from "./onboard.ts";
 
 export default Plugin.define({
   id: "createos.sandbox",
   async setup(ctx) {
     const config = configure(ctx.options);
+    // Started on the first turn, not at load: plugin setup stays side-effect free,
+    // and the agent still starts out knowing whether the CLI is usable.
+    let onboarding: Promise<Onboarding> | undefined;
     const cli = new CLI();
     const runtime = new Runtime(
       cli,
@@ -53,14 +57,15 @@ export default Plugin.define({
         routeTools(editor, runtime, files);
         registerTools(editor, runtime, files, background);
       });
-      await ctx.session.hook("context", (event) => {
+      await ctx.session.hook("context", async (event) => {
+        onboarding ??= onboard(process.env.CREATEOS_BIN ?? "createos");
         const remote = runtime.remote(event.sessionID);
         event.system.push({
           type: "text",
           text: [
             "CreateOS Sandbox is available through sandbox_* tools.",
             "Use sandbox_run_code for one program; sandbox_offload for a project build/test; sandbox_fanout for independent commands.",
-            "CreateOS authentication uses the server's createos CLI login or environment. If unavailable, ask the user to run createos login in their own terminal.",
+            `CreateOS CLI status:\n${(await onboarding).status}`,
             "Egress is unrestricted by default. Hostname allowlists are not enforced by the recorded control-plane behavior; firewall accepts IP/CIDR rules.",
             remote
               ? `Remote mode: shell/bash, read/write/edit/patch, glob and grep execute in the session's Linux sandbox. Guest cwd: ${config.cwd}. Host project: ${ctx.location.directory}. Project copy: ${config.sync}. Other tools retain their own execution environment. Use explicit push/pull/sync to cross the host/guest boundary. Background commands use sandbox_process_start.`

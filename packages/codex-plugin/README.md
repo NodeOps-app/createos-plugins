@@ -21,27 +21,26 @@ codex plugin add createos-sandbox-codex --marketplace createos
 
 ## Prerequisites
 
-1. **createos CLI** — `cos` auto-installs it on first use, or manually:
+1. **createos CLI** — the session-start hook runs `cos setup`, which installs
+   it if missing (`curl -sfL …/install.sh | sh -`) and otherwise upgrades it in
+   place in the background. `COS_NO_AUTOINSTALL=1` disables this; a `COS_CLI`
+   binary is never auto-installed.
 
-   ```bash
-   curl -sfL https://raw.githubusercontent.com/NodeOps-app/createos-cli/main/install.sh | sh
-   ```
-
-2. **Login** (one-time, in your own terminal — it opens a browser):
-
-   ```bash
-   createos login
-   ```
-
-   Or export `CREATEOS_API_KEY`. Never paste an API key into the agent chat.
+2. **Sign-in** — if you are signed out and `tmux` is available, `cos setup`
+   starts `createos login` in a hidden tmux session (`createos-login`) and your
+   browser opens the CreateOS sign-in page; finish it there. Without `tmux`,
+   run `createos login` in your own terminal. Or export `CREATEOS_API_KEY` to
+   skip it. To sign in with an API token instead,
+   `tmux kill-session -t createos-login`, then run `createos login` and pick
+   "Sign in with API token". Never paste an API key into the agent chat.
 
 3. `jq`, `tar`, `perl`, `curl` — `cos` needs them; the session-start hook is a
-   no-op without `jq`.
+   no-op without `jq`. `tmux` is optional (automatic browser sign-in).
 
 ## How it works
 
-1. The session-start hook prints the driver's absolute path into Codex's context
-   and states the verb rule (`offload` for work with a finish line, `up`/`run`
+1. The session-start hook runs `cos setup`, prints the driver's absolute path and
+   the CLI version/sign-in status into Codex's context, and states the verb rule (`offload` for work with a finish line, `up`/`run`
    for work that outlives one command).
 2. A `pre-tool-use` hook watches shell calls and suggests offloading when it sees
    a heavy build or test. Advisory only — it never blocks. Silence with

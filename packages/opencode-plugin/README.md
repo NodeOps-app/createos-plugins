@@ -5,8 +5,8 @@ Native OpenCode V2 plugin with explicit `sandbox_*` tools and optional remote ex
 ## Requirements
 
 - OpenCode V2 with the 2.0.16 plugin API, running on macOS or Linux.
-- The `createos` CLI installed on the **OpenCode server's** PATH. The managed-process and desktop commands used here are present in CLI v0.0.29.
-- Authenticate on that server with `createos login`, or set `CREATEOS_API_KEY` in its environment.
+- The `createos` CLI on the **OpenCode server**. On the first turn the plugin installs it there if missing (`curl -sfL …/install.sh | sh -`), otherwise upgrades it in place in the background; `COS_NO_AUTOINSTALL=1` disables this, and a custom `CREATEOS_BIN` is never auto-installed. The managed-process and desktop commands used here are present in CLI v0.0.29.
+- Authentication on that server. If `CREATEOS_API_KEY` is unset, `createos whoami` says signed out, and `tmux` is available, the plugin starts `createos login` in a hidden tmux session (`createos-login`) and the browser opens the CreateOS sign-in page **on the machine running the OpenCode server**; finish it there. Without `tmux`, run `createos login` on the server yourself. To use an API token instead, `tmux kill-session -t createos-login`, then run `createos login` and pick "Sign in with API token", or set `CREATEOS_API_KEY` in the server's environment. The CLI version and sign-in status are added to the session's system context.
 - Guest image with Bash, Python 3.9+, tar, and ripgrep for file tools/search. Default: `devbox:1`.
 - Host Git and tar for project snapshots; SSH keygen and the CLI's sync dependencies for watch mode.
 
