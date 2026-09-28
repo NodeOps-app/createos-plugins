@@ -5,13 +5,13 @@ Pi coding agent extension with [CreateOS Sandbox](https://nodeops.network/create
 ## Setup
 
 ```bash
-curl -sfL https://raw.githubusercontent.com/NodeOps-app/createos-cli/main/install.sh | sh -
 # Install from the repository root. The root manifest exposes this extension.
 pi install git:github.com/NodeOps-app/createos-plugin
-createos login
 ```
 
 The repository root forwards Pi's package entry point to this extension. No API keys, no env vars.
+
+At every session start the extension installs the `createos` CLI if missing (`curl -sfL …/install.sh | sh -`), otherwise upgrades it in place in the background; `COS_NO_AUTOINSTALL=1` disables this. If `createos whoami` says you are signed out and `tmux` is available, it starts `createos login` in a hidden tmux session (`createos-login`) and your browser opens the CreateOS sign-in page — finish it there. Without `tmux`, run `createos login` yourself. To skip browser sign-in, export `CREATEOS_API_KEY`, or `tmux kill-session -t createos-login` and run `createos login` choosing "Sign in with API token". The CLI version and sign-in status go into Pi's system prompt.
 
 ## Usage
 

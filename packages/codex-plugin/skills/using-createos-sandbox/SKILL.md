@@ -25,14 +25,16 @@ cos auth
 
 Healthy output names one of three credential sources: `CREATEOS_API_KEY`, a browser OAuth session, or an API token file. Anything else means not signed in.
 
-**You cannot fix that yourself.** `createos login` is an interactive TTY prompt that opens a browser, and an agent shell has no TTY. Do not try to run it and do not work around it with `--token`. Relay the two options to the user:
+The session-start context already reports the CLI version/path and sign-in status: at session start `cos setup` installs or upgrades the CLI and, if signed out with `tmux` available, starts `createos login` in a hidden tmux session (`createos-login`) that opens the user's browser on the CreateOS sign-in page. If sign-in is pending, tell the user to finish it in their browser, then re-check with `cos auth`. You may re-run `cos setup` if that session is gone.
 
-1. **Browser (recommended)** — they run `createos login` in their own terminal and pick "Sign in with browser".
-2. **API key** — they `export CREATEOS_API_KEY=<key>` (from <https://createos.sh>) in the shell that launched the agent.
+**Do not run `createos login` yourself** — it is an interactive TTY prompt and an agent shell has no TTY. Do not work around it with `--token`. Otherwise relay the options to the user:
+
+1. **Browser (recommended)** — finish the sign-in page already open in their browser, or run `createos login` in their own terminal and pick "Sign in with browser".
+2. **API key** — they `export CREATEOS_API_KEY=<key>` (from <https://createos.sh>) in the shell that launched the agent, or `tmux kill-session -t createos-login`, run `createos login` themselves and pick "Sign in with API token".
 
 **Never ask the user to paste an API key into the conversation** — it lands in the transcript. Export or browser, nothing else.
 
-Every `cos` command except `install` and `auth` runs this check first, so an unauthenticated box never gets tarballed and uploaded before failing.
+Every `cos` command except `install`, `setup` and `auth` runs this check first, so an unauthenticated box never gets tarballed and uploaded before failing.
 
 ## When to reach for it
 
