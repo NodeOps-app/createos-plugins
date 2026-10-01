@@ -1,0 +1,11 @@
+Conversation (sanitized):
+User reported sandbox creation failing because rootfs was required.
+Assistant reproduced missing --rootfs, defaulted to devbox:1, and
+verified tests, typecheck, and installed Pi startup in tmux.
+User requested --inside-sandbox and --sandbox-* launch flags.
+Assistant renamed flags and docs, then tested installed Pi in tmux.
+User authorized git commits after testing. Adversarial review found
+retired launch flags could fall back to host execution. Assistant
+added explicit rejection and fail-closed guards, verified 23 tests
+and typecheck, and committed rootfs fix and flag rename separately.
+Public Pi docs in sibling repository remain a follow-up.
