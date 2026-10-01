@@ -75,21 +75,36 @@ function createExtensionHarness(flagValues: Record<string, boolean> = {}) {
   };
 }
 
-test("uses --inside-createos-sandbox as the only remote-mode flag", async () => {
+test("uses --inside-sandbox as the only remote-mode flag", async () => {
   const local = createExtensionHarness();
-  assert(local.registeredFlags.includes("inside-createos-sandbox"));
-  assert(!local.registeredFlags.includes("createos"));
+  assert.deepEqual(local.registeredFlags, [
+    "inside-sandbox",
+    "inside-createos-sandbox",
+    "sandbox-shape",
+    "sandbox-rootfs",
+    "sandbox-network",
+    "sandbox-sync-once",
+    "sandbox-watch",
+    "sandbox-avoid-git-ignore",
+  ]);
   assert(local.registeredTools.some((tool) => tool.name === "sandbox_create"));
   assert.equal(local.runUserBash(), undefined);
   await local.start();
   assert.deepEqual(local.execCalls, []);
 
-  const legacy = createExtensionHarness({ createos: true });
-  assert.equal(legacy.runUserBash(), undefined);
+  const legacy = createExtensionHarness({ createos: true, "inside-createos-sandbox": true });
+  assert.deepEqual(legacy.runUserBash(), {
+    result: {
+      output: "CreateOS sandbox is unavailable — the command was NOT run on your host. Restart Pi.",
+      exitCode: 1,
+      cancelled: false,
+      truncated: false,
+    },
+  });
   await legacy.start();
   assert.deepEqual(legacy.execCalls, []);
 
-  const remote = createExtensionHarness({ "inside-createos-sandbox": true });
+  const remote = createExtensionHarness({ "inside-sandbox": true });
   assert.deepEqual(remote.runUserBash(), {
     result: {
       output: "CreateOS sandbox is unavailable — the command was NOT run on your host. Restart Pi.",
@@ -114,7 +129,7 @@ test("allows global network commands without an active sandbox", async () => {
   assert.deepEqual(notifications, ["No networks. Create with /network create <name>"]);
 
   await extension.runCommand("network", "attach network-1", ctx);
-  assert.equal(notifications.at(-1), "No sandbox active. Launch with --inside-createos-sandbox.");
+  assert.equal(notifications.at(-1), "No sandbox active. Launch with --inside-sandbox.");
   assert.equal(extension.execCalls.length, 1);
 });
 
@@ -134,7 +149,7 @@ describe("selectStartupSync", () => {
   test("rejects incompatible CreateOS flags", () => {
     assert.throws(
       () => selectStartupSync(true, true),
-      /--createos-sync-once and --createos-watch are mutually exclusive/,
+      /--sandbox-sync-once and --sandbox-watch are mutually exclusive/,
     );
   });
 });

@@ -52,13 +52,13 @@ pi install git:github.com/NodeOps-app/createos-plugin
 pi
 
 # Optional: create a sandbox and route Pi's built-in tools into it
-pi --inside-createos-sandbox
+pi --inside-sandbox
 
 # Optional: copy this project to /root/workspace before sandbox-mode Pi starts
-pi --inside-createos-sandbox --createos-sync-once
+pi --inside-sandbox --sandbox-sync-once
 
 # Optional: continuously sync this project and /root/workspace in sandbox mode
-pi --inside-createos-sandbox --createos-watch
+pi --inside-sandbox --sandbox-watch
 ```
 
 **Codex:**
@@ -125,7 +125,7 @@ The Claude Code, Codex, Pi, and OpenCode integrations use the `createos` CLI. Al
 | Package                                                                               | What it does                                                                                                                                                                                                                                                                                                                   |
 | ------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
 | [**claude-code-plugin**](./packages/claude-code-plugin)                               | Hooks-based Claude Code plugin — offload, parallel fanout, scratch shell, reusable box with sync, port tunnel, public HTTPS expose, private-network clusters, BYO-S3 disk mounts, WireGuard VPN, and snapshot/fork — all driving the authed `createos` CLI.                                                                    |
-| [**pi-extension**](./packages/pi-extension)                                           | Pi coding agent extension with all 33 `sandbox_*` tools for lifecycle, configuration, port tunnels, file sync, private networks, persistent disks, and device VPN. Built-in tools route remotely only with `--inside-createos-sandbox`.                                                                                        |
+| [**pi-extension**](./packages/pi-extension)                                           | Pi coding agent extension with all 33 `sandbox_*` tools for lifecycle, configuration, port tunnels, file sync, private networks, persistent disks, and device VPN. Built-in tools route remotely only with `--inside-sandbox`.                                                                                        |
 | [**createos-sandbox-codex**](./packages/codex-plugin)                                 | Codex plugin — the `cos` driver, the `using-createos-sandbox` skill, and session-start / offload-hint hooks. Same engine as the Claude Code plugin.                                                                                                                                                                            |
 | [**@createos/opencode**](./packages/opencode-plugin)                                  | Native OpenCode V2 plugin with 54 sandbox tools, opt-in remote shell/file routing, session-scoped persistence, managed processes, and a public RPC contract.                                                                                                                                                                   |
 | [**@nodeops-createos/dsh-createos**](./packages/dsh-createos)                         | DeepSeek Harness bundle that replaces `ctx.fs` and `ctx.subprocess` together, so Bash, file, LSP, and PTY consumers operate inside one CreateOS sandbox without provider-specific tool forks.                                                                                                                                  |
@@ -181,7 +181,7 @@ Full flags, networking guide, and heavy-build tips live in the [**Claude Code Pl
 
 ## Pi — commands at a glance
 
-Pi and built-in tools run locally by default. `--inside-createos-sandbox` routes built-ins (bash, read, write, edit, ls, find, grep) to a sandbox; all 33 sandbox lifecycle, networking, disk, and device-VPN tools remain available in either mode.
+Pi and built-in tools run locally by default. `--inside-sandbox` routes built-ins (bash, read, write, edit, ls, find, grep) to a sandbox; all 33 sandbox lifecycle, networking, disk, and device-VPN tools remain available in either mode.
 
 | Command                    | What                                  |
 | -------------------------- | ------------------------------------- |
@@ -200,18 +200,18 @@ Pi and built-in tools run locally by default. `--inside-createos-sandbox` routes
 
 | Flag                          | Purpose                                |
 | ----------------------------- | -------------------------------------- |
-| `--inside-createos-sandbox`   | Run Pi inside a sandbox                |
-| `--createos-shape <shape>`    | Sandbox shape (default: `s-2vcpu-2gb`) |
-| `--createos-rootfs <name>`    | Base image or template                 |
-| `--createos-network <name>`   | Network(s) to join at creation         |
-| `--createos-sync-once`        | Copy project to `/root/workspace` once |
-| `--createos-avoid-git-ignore` | Include Git-ignored files in that copy |
-| `--createos-watch`            | Two-way project sync for this session  |
+| `--inside-sandbox`   | Run Pi inside a sandbox                |
+| `--sandbox-shape <shape>`    | Sandbox shape (default: `s-2vcpu-2gb`) |
+| `--sandbox-rootfs <name>`    | Base image or template                 |
+| `--sandbox-network <name>`   | Network(s) to join at creation         |
+| `--sandbox-sync-once`        | Copy project to `/root/workspace` once |
+| `--sandbox-avoid-git-ignore` | Include Git-ignored files in that copy |
+| `--sandbox-watch`            | Two-way project sync for this session  |
 
-Use `--createos-sync-once`, `--createos-watch`, and other `--createos-*` flags with
-`--inside-createos-sandbox`. The sync flags are mutually exclusive. The first preserves
+Use `--sandbox-sync-once`, `--sandbox-watch`, and other `--sandbox-*` flags with
+`--inside-sandbox`. The sync flags are mutually exclusive. The first preserves
 sandbox-only files and excludes VCS metadata plus Git-ignored files by default;
-`--createos-avoid-git-ignore` includes ignored files. The latter starts the existing two-way
+`--sandbox-avoid-git-ignore` includes ignored files. The latter starts the existing two-way
 sync. In sandbox mode, loaded Pi skill directories are mirrored before the first agent turn;
 Pi credentials, settings, and sessions stay local.
 

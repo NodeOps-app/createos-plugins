@@ -40,32 +40,37 @@ interface ActiveSandbox {
 const hostCwd = process.cwd();
 
 export default function (pi: ExtensionAPI, onboardCLI = onboard) {
-  pi.registerFlag("inside-createos-sandbox", {
+  pi.registerFlag("inside-sandbox", {
     description: "CreateOS sandbox: run Pi inside it",
     type: "boolean",
   });
-  pi.registerFlag("createos-shape", {
+  // Recognize retired sandbox mode so old launchers cannot fall back to host tools.
+  pi.registerFlag("inside-createos-sandbox", {
+    description: "Removed: use --inside-sandbox instead (host tools remain blocked)",
+    type: "boolean",
+  });
+  pi.registerFlag("sandbox-shape", {
     description: "CreateOS sandbox: shape (default: s-2vcpu-2gb)",
     type: "string",
   });
-  pi.registerFlag("createos-rootfs", {
+  pi.registerFlag("sandbox-rootfs", {
     description: "CreateOS sandbox: rootfs or template",
     type: "string",
   });
-  pi.registerFlag("createos-network", {
+  pi.registerFlag("sandbox-network", {
     description: "CreateOS sandbox: network(s) to join (comma-separated)",
     type: "string",
   });
-  pi.registerFlag("createos-sync-once", {
+  pi.registerFlag("sandbox-sync-once", {
     description: "CreateOS sandbox: copy host project to /root/workspace before starting Pi",
     type: "boolean",
   });
-  pi.registerFlag("createos-watch", {
+  pi.registerFlag("sandbox-watch", {
     description: "CreateOS sandbox: keep host project and /root/workspace synchronized",
     type: "boolean",
   });
-  pi.registerFlag("createos-avoid-git-ignore", {
-    description: "CreateOS sandbox: copy files excluded by .gitignore during --createos-sync-once",
+  pi.registerFlag("sandbox-avoid-git-ignore", {
+    description: "CreateOS sandbox: copy files excluded by .gitignore during --sandbox-sync-once",
     type: "boolean",
   });
 
@@ -93,7 +98,7 @@ export default function (pi: ExtensionAPI, onboardCLI = onboard) {
           pi,
           sandbox.sandboxId,
           hostCwd,
-          { avoidGitIgnore: pi.getFlag("createos-avoid-git-ignore") === true },
+          { avoidGitIgnore: pi.getFlag("sandbox-avoid-git-ignore") === true },
           signal,
         );
         return true;
@@ -116,7 +121,7 @@ export default function (pi: ExtensionAPI, onboardCLI = onboard) {
     handler: async (_args, ctx) => {
       if (!active) {
         ctx.ui.notify(
-          "No CreateOS sandbox is active. Launch Pi with --inside-createos-sandbox.",
+          "No CreateOS sandbox is active. Launch Pi with --inside-sandbox.",
           "warning",
         );
         return;
@@ -205,7 +210,7 @@ export default function (pi: ExtensionAPI, onboardCLI = onboard) {
               return;
             }
             if (!active) {
-              ctx.ui.notify("No sandbox active. Launch with --inside-createos-sandbox.", "warning");
+              ctx.ui.notify("No sandbox active. Launch with --inside-sandbox.", "warning");
               return;
             }
             await cli.attachNetwork(pi, active.sandboxId, arg);
@@ -217,7 +222,7 @@ export default function (pi: ExtensionAPI, onboardCLI = onboard) {
               return;
             }
             if (!active) {
-              ctx.ui.notify("No sandbox active. Launch with --inside-createos-sandbox.", "warning");
+              ctx.ui.notify("No sandbox active. Launch with --inside-sandbox.", "warning");
               return;
             }
             await cli.detachNetwork(pi, active.sandboxId, arg);
@@ -312,14 +317,18 @@ export default function (pi: ExtensionAPI, onboardCLI = onboard) {
       if (result.notice) ctx.ui.notify(result.notice, "warning");
       return result;
     });
-    if (pi.getFlag("inside-createos-sandbox") !== true) return;
+    if (pi.getFlag("inside-createos-sandbox") === true) {
+      ctx.ui.notify("--inside-createos-sandbox was removed. Use --inside-sandbox; host tools are blocked.", "error");
+      return;
+    }
+    if (pi.getFlag("inside-sandbox") !== true) return;
     if (active) return;
 
     let startupSync: "once" | "watch" | undefined;
     try {
       startupSync = selectStartupSync(
-        pi.getFlag("createos-sync-once") === true,
-        pi.getFlag("createos-watch") === true,
+        pi.getFlag("sandbox-sync-once") === true,
+        pi.getFlag("sandbox-watch") === true,
       );
     } catch (err) {
       ctx.ui.notify(errorMessage(err), "error");
@@ -361,9 +370,9 @@ export default function (pi: ExtensionAPI, onboardCLI = onboard) {
         }
       }
 
-      const shape = stringFlag(pi.getFlag("createos-shape")) ?? "s-2vcpu-2gb";
-      const rootfs = stringFlag(pi.getFlag("createos-rootfs"));
-      const networkFlag = stringFlag(pi.getFlag("createos-network"));
+      const shape = stringFlag(pi.getFlag("sandbox-shape")) ?? "s-2vcpu-2gb";
+      const rootfs = stringFlag(pi.getFlag("sandbox-rootfs"));
+      const networkFlag = stringFlag(pi.getFlag("sandbox-network"));
       const networks = networkFlag
         ? networkFlag
             .split(",")

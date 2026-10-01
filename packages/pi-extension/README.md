@@ -1,6 +1,6 @@
 # @createos/pi
 
-Pi coding agent extension with [CreateOS Sandbox](https://nodeops.network/createos) tools. Pi runs locally by default; `--inside-createos-sandbox` routes its built-in tools to a remote sandbox.
+Pi coding agent extension with [CreateOS Sandbox](https://nodeops.network/createos) tools. Pi runs locally by default; `--inside-sandbox` routes its built-in tools to a remote sandbox.
 
 ## Setup
 
@@ -20,29 +20,31 @@ At every session start the extension installs the `createos` CLI if missing (`cu
 pi
 
 # Create a sandbox and route Pi's built-in tools into it.
-pi --inside-createos-sandbox
+pi --inside-sandbox
 ```
 
 Sandbox lifecycle, networking, device access, and port-forwarding tools are available in both modes.
 
 ### Sandbox-mode flags
 
-Use these with `--inside-createos-sandbox`:
+Use these with `--inside-sandbox`. Replace previous `--createos-*` spellings with
+`--sandbox-*`. The retired `--inside-createos-sandbox` flag reports an error and
+blocks host tools; it does not start a sandbox.
 
 | Flag                          | Purpose                                          |
 | ----------------------------- | ------------------------------------------------ |
-| `--inside-createos-sandbox`   | Run Pi inside a sandbox                          |
-| `--createos-shape <shape>`    | Sandbox shape (default: `s-2vcpu-2gb`)           |
-| `--createos-rootfs <name>`    | Base image or template                           |
-| `--createos-network <name>`   | Network(s) to join at creation (comma-separated) |
-| `--createos-sync-once`        | Copy the host project to `/root/workspace` first |
-| `--createos-avoid-git-ignore` | Include files ignored by Git during that copy    |
-| `--createos-watch`            | Keep the host project and sandbox in sync        |
+| `--inside-sandbox`   | Run Pi inside a sandbox                          |
+| `--sandbox-shape <shape>`    | Sandbox shape (default: `s-2vcpu-2gb`)           |
+| `--sandbox-rootfs <name>`    | Base image or template (default: `devbox:1`)       |
+| `--sandbox-network <name>`   | Network(s) to join at creation (comma-separated) |
+| `--sandbox-sync-once`        | Copy the host project to `/root/workspace` first |
+| `--sandbox-avoid-git-ignore` | Include files ignored by Git during that copy    |
+| `--sandbox-watch`            | Keep the host project and sandbox in sync        |
 
-`--createos-sync-once` and `--createos-watch` cannot be combined. The former copies
+`--sandbox-sync-once` and `--sandbox-watch` cannot be combined. The former copies
 host files once, keeps sandbox-only files, and excludes VCS metadata plus Git-ignored
-files by default. `--createos-avoid-git-ignore` includes Git-ignored files.
-`--createos-watch` starts a two-way Mutagen sync for the session.
+files by default. `--sandbox-avoid-git-ignore` includes Git-ignored files.
+`--sandbox-watch` starts a two-way Mutagen sync for the session.
 
 In sandbox mode, before the first agent turn, loaded Pi skill directories are mirrored to
 their original absolute paths in the sandbox. Only the loaded skill directories and their
@@ -111,16 +113,16 @@ Pi uses `sandbox_fanout`: it archives the local project while honoring Git ignor
 Sandboxes on the same network can reach each other by IP:
 
 ```bash
-pi --inside-createos-sandbox --createos-network backend
+pi --inside-sandbox --sandbox-network backend
 ```
 
 ## How it works
 
 1. By default, Pi and its built-in tools run locally while sandbox tools stay available.
-2. `pi --inside-createos-sandbox` checks that `createos` is installed and logged in, then creates a sandbox.
+2. `pi --inside-sandbox` checks that `createos` is installed and logged in, then creates a sandbox.
 3. In sandbox mode, Pi tools (bash, read, write, edit, ls, find, grep) run through `createos sandbox exec` / `push` / `pull`.
 4. Sandbox mode mirrors loaded Pi skill directories before the first agent turn.
-5. In sandbox mode, `--createos-sync-once` copies the host project to `/root/workspace`; `--createos-watch` starts a two-way sync.
+5. In sandbox mode, `--sandbox-sync-once` copies the host project to `/root/workspace`; `--sandbox-watch` starts a two-way sync.
 6. On exit, ephemeral sandbox-mode sessions destroy their sandbox; persisted sessions keep it for resume.
 
 ## Architecture

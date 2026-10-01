@@ -43,7 +43,7 @@ const SENSITIVE_HOME_DIRECTORIES = new Set([
 ]);
 export function selectStartupSync(syncOnce: boolean, watch: boolean): "once" | "watch" | undefined {
   if (syncOnce && watch) {
-    throw new Error("--createos-sync-once and --createos-watch are mutually exclusive");
+    throw new Error("--sandbox-sync-once and --sandbox-watch are mutually exclusive");
   }
   if (syncOnce) return "once";
   return watch ? "watch" : undefined;

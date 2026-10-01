@@ -83,7 +83,7 @@ export function registerTools(pi: ExtensionAPI, getActive: () => ToolSandbox | n
   function requireSandbox(): ToolSandbox | null {
     const active = getActive();
     if (active) return active;
-    if (pi.getFlag("inside-createos-sandbox") === true) {
+    if (pi.getFlag("inside-sandbox") === true || pi.getFlag("inside-createos-sandbox") === true) {
       throw new Error(
         "CreateOS sandbox is unavailable — the tool was NOT run on your host. Restart Pi.",
       );
@@ -560,7 +560,7 @@ export function registerTools(pi: ExtensionAPI, getActive: () => ToolSandbox | n
     description: "Run a command on a specific sandbox by ID.",
     promptSnippet: "Run a command on a specific sandbox",
     promptGuidelines: [
-      "Use sandbox_exec for a named sandbox. In --inside-createos-sandbox mode, bash runs on the current sandbox; use sandbox_exec for any other sandbox.",
+      "Use sandbox_exec for a named sandbox. In --inside-sandbox mode, bash runs on the current sandbox; use sandbox_exec for any other sandbox.",
     ],
     parameters: Type.Object({
       sandbox_id: Type.String({ description: "ID of the target sandbox" }),
@@ -1413,7 +1413,7 @@ export function registerTools(pi: ExtensionAPI, getActive: () => ToolSandbox | n
   pi.on("user_bash", () => {
     const active = getActive();
     if (active) return { operations: createBashOps(pi, active.sandboxId, active.cwd) };
-    if (pi.getFlag("inside-createos-sandbox") === true) {
+    if (pi.getFlag("inside-sandbox") === true || pi.getFlag("inside-createos-sandbox") === true) {
       return {
         result: {
           output:

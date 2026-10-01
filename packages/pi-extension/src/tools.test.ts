@@ -32,6 +32,25 @@ test("registers the compact desktop surface", () => {
   );
 });
 
+test("sandbox-mode flags block every built-in tool without an active sandbox", async () => {
+  for (const flag of ["inside-sandbox", "inside-createos-sandbox"]) {
+    const tools: Array<{ name: string; execute: (...args: never[]) => unknown }> = [];
+    registerTools(
+      {
+        registerTool(tool: (typeof tools)[number]) { tools.push(tool); },
+        on() {},
+        getFlag(name: string) { return name === flag; },
+      } as never,
+      () => null,
+    );
+    for (const name of ["bash", "read", "write", "edit", "ls", "find", "grep"]) {
+      const tool = tools.find((tool) => tool.name === name);
+      assert(tool);
+      await assert.rejects(async () => tool.execute(), /NOT run on your host/);
+    }
+  }
+});
+
 test("maps every sandbox_computer operation", () => {
   assert.deepEqual(computerAction({ op: "screen" }), { op: "screen" });
   assert.deepEqual(computerAction({ op: "cursor" }), { op: "cursor" });

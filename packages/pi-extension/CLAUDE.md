@@ -1,7 +1,7 @@
 # pi-createos-plugin
 
 Pi coding agent extension for [CreateOS Sandbox](https://nodeops.network/createos).
-Pi and its built-in tools run locally by default; `--inside-createos-sandbox` routes built-ins to a remote sandbox.
+Pi and its built-in tools run locally by default; `--inside-sandbox` routes built-ins to a remote sandbox.
 
 ## Architecture
 
@@ -50,7 +50,7 @@ Pi agent (local)  →  createos CLI  →  CreateOS API  →  Sandbox
 ### Built-in replacements (7)
 
 `bash`, `read`, `write`, `edit`, `ls`, `find`, `grep` — run locally by default and route
-to the sandbox only when `--inside-createos-sandbox` is active.
+to the sandbox only when `--inside-sandbox` is active.
 
 ### Sandbox lifecycle (8)
 
@@ -96,20 +96,23 @@ and `sandbox_screenshot` captures a PNG. This matches the compact OpenCode tool 
 
 | Flag                          | Type    | Purpose                                          |
 | ----------------------------- | ------- | ------------------------------------------------ |
-| `--inside-createos-sandbox`   | boolean | Run Pi inside a sandbox                          |
-| `--createos-shape`            | string  | Sandbox size (default: `s-2vcpu-2gb`)            |
-| `--createos-rootfs`           | string  | Base image or template                           |
-| `--createos-network`          | string  | Network(s) to join at creation (comma-separated) |
-| `--createos-sync-once`        | boolean | Copy the host project to `/root/workspace` first |
-| `--createos-avoid-git-ignore` | boolean | Include Git-ignored files during that copy       |
-| `--createos-watch`            | boolean | Keep the host project and sandbox synchronized   |
+| `--inside-sandbox`   | boolean | Run Pi inside a sandbox                          |
+| `--sandbox-shape`            | string  | Sandbox size (default: `s-2vcpu-2gb`)            |
+| `--sandbox-rootfs`           | string  | Base image or template (default: `devbox:1`)       |
+| `--sandbox-network`          | string  | Network(s) to join at creation (comma-separated) |
+| `--sandbox-sync-once`        | boolean | Copy the host project to `/root/workspace` first |
+| `--sandbox-avoid-git-ignore` | boolean | Include Git-ignored files during that copy       |
+| `--sandbox-watch`            | boolean | Keep the host project and sandbox synchronized   |
 
-Use `--createos-*` flags with `--inside-createos-sandbox`. `--createos-sync-once` and
-`--createos-watch` are mutually exclusive. The former packs and uploads host files without
-VCS metadata or Git-ignored files by default; `--createos-avoid-git-ignore` includes ignored
+Use `--sandbox-*` flags with `--inside-sandbox`. `--sandbox-sync-once` and
+`--sandbox-watch` are mutually exclusive. The former packs and uploads host files without
+VCS metadata or Git-ignored files by default; `--sandbox-avoid-git-ignore` includes ignored
 files. The latter delegates to the existing two-way `createos sandbox sync` command. Before
 the first sandbox-mode agent turn, loaded Pi skill directories are mirrored to their original
 absolute paths in the sandbox; Pi credentials, settings, and sessions stay local.
+
+The retired `--inside-createos-sandbox` flag is registered only to report its replacement
+and block host-tool fallback. It must never silently enable local execution.
 
 ## Slash commands
 
@@ -121,7 +124,7 @@ absolute paths in the sandbox; Pi credentials, settings, and sessions stay local
 
 ## Lifecycle
 
-1. `session_start` — with `--inside-createos-sandbox`, preflight checks, create sandbox, then optionally sync or watch `/root/workspace`
+1. `session_start` — with `--inside-sandbox`, preflight checks, create sandbox, then optionally sync or watch `/root/workspace`
 2. `before_agent_start` — in sandbox mode, mirror loaded skill directories, then inject sandbox context
 3. `session_shutdown` — stop a watcher, clean up temp SSH key, destroy sandbox (ephemeral) or keep (persisted)
 
@@ -142,7 +145,7 @@ were patched in `createos-cli` to support it via `output.Render()`.
 - **Temp SSH key for sync**: `sandbox_sync` uses Mutagen which needs SSH.
   The user's key may be passphrase-protected (can't prompt non-interactively).
   We generate a throwaway ed25519 key per session, cleaned up on shutdown.
-  For `--createos-watch`, the watcher gets its own key (held on `ProjectWatch`),
+  For `--sandbox-watch`, the watcher gets its own key (held on `ProjectWatch`),
   cleaned on every shutdown path (`quit`/`new`/`resume`/`fork`) to avoid
   orphans.
 
