@@ -53,7 +53,7 @@ export async function createSandbox(
   },
 ): Promise<SandboxInfo> {
   const args = ["-o", "json", "sandbox", "create", "--shape", opts.shape ?? "s-2vcpu-2gb"];
-  if (opts.rootfs) args.push("--rootfs", opts.rootfs);
+  args.push("--rootfs", opts.rootfs ?? "devbox:1");
   if (opts.ingress) args.push("--ingress");
   if (opts.name) args.push("--name", opts.name);
   if (opts.networks) {
