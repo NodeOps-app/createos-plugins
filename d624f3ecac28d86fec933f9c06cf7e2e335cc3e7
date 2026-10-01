@@ -1,0 +1,1 @@
+See conversation note on the following sandbox-flag rename commit. Rootfs regression reproduced before fix; tests, typecheck, and live installed Pi startup verified.
