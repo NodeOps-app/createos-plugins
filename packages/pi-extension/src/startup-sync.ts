@@ -1,4 +1,4 @@
-import { mkdtemp, readlink, realpath, rm, stat, writeFile } from "node:fs/promises";
+import { lstat, mkdtemp, readlink, realpath, rm, stat, writeFile } from "node:fs/promises";
 import { homedir, tmpdir } from "node:os";
 import { dirname, isAbsolute, join, relative, resolve, sep } from "node:path";
 import { randomUUID } from "node:crypto";
@@ -276,7 +276,17 @@ async function createGitIgnoreArchiveArgs(
     { signal },
   );
   if (result.code !== 0) throw new Error(`Could not list project files: ${commandError(result)}`);
-  await writeFile(fileList, result.stdout);
+  const files: string[] = [];
+  for (const file of result.stdout.split("\0").filter(Boolean)) {
+    try {
+      await lstat(join(source, file));
+      files.push(file);
+    } catch (error) {
+      const code = (error as NodeJS.ErrnoException).code;
+      if (code !== "ENOENT" && code !== "ENOTDIR") throw error;
+    }
+  }
+  await writeFile(fileList, files.map((file) => `${file}\0`).join(""));
   return [
     "-C",
     source,

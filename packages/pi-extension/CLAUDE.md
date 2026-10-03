@@ -106,8 +106,9 @@ and `sandbox_screenshot` captures a PNG. This matches the compact OpenCode tool 
 
 Use `--sandbox-*` flags with `--inside-sandbox`. `--sandbox-sync-once` and
 `--sandbox-watch` are mutually exclusive. The former packs and uploads host files without
-VCS metadata or Git-ignored files by default; `--sandbox-avoid-git-ignore` includes ignored
-files. The latter delegates to the existing two-way `createos sandbox sync` command. Before
+VCS metadata or Git-ignored files by default. The Git file list is filtered with `lstat`
+to skip missing tracked paths (deleted files or sparse checkouts) while preserving symlinks.
+`--sandbox-avoid-git-ignore` includes ignored files. The latter delegates to the existing two-way `createos sandbox sync` command. Before
 the first sandbox-mode agent turn, loaded Pi skill directories are mirrored to their original
 absolute paths in the sandbox; Pi credentials, settings, and sessions stay local.
 

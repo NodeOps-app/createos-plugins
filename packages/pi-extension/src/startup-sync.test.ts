@@ -268,6 +268,8 @@ test("uses Git's unignored file list for a one-time project sync", async () => {
   const source = await mkdtemp(join(tmpdir(), "pi-createos-project-"));
 
   try {
+    await writeFile(join(source, "tracked.ts"), "tracked");
+    await writeFile(join(source, "untracked.ts"), "untracked");
     let checkedForGit = false;
     let archiveFiles: string | undefined;
     const pi = {
@@ -319,7 +321,7 @@ test("copies Git-ignored files only when requested", async () => {
   }
 });
 
-test("honors .gitignore in a real project archive", async () => {
+test("honors .gitignore and skips missing tracked files in a real project archive", async () => {
   const fixture = await mkdtemp(join(tmpdir(), "pi-createos-project-"));
   const source = join(fixture, "source");
   const savedArchive = join(fixture, "project.tar.gz");
@@ -328,6 +330,19 @@ test("honors .gitignore in a real project archive", async () => {
   await writeFile(join(source, "kept.txt"), "kept");
   await writeFile(join(source, "ignored.txt"), "ignored");
   spawnSync("git", ["init", "--quiet", source], { encoding: "utf8" });
+  await writeFile(join(source, "deleted.txt"), "deleted");
+  await writeFile(join(source, "sparse.txt"), "sparse");
+  await symlink("missing-target", join(source, "dangling-link"));
+  assert.equal(spawnSync("git", ["-C", source, "add", "."], { encoding: "utf8" }).status, 0);
+  assert.equal(
+    spawnSync("git", ["-C", source, "update-index", "--skip-worktree", "sparse.txt"], {
+      encoding: "utf8",
+    }).status,
+    0,
+  );
+  await rm(join(source, "deleted.txt"));
+  await rm(join(source, "sparse.txt"));
+  await writeFile(join(source, "untracked.txt"), "untracked");
 
   try {
     const pi = {
@@ -352,6 +367,10 @@ test("honors .gitignore in a real project archive", async () => {
     );
     assert(members.includes(".gitignore"));
     assert(members.includes("kept.txt"));
+    assert(members.includes("untracked.txt"));
+    assert(members.includes("dangling-link"));
+    assert(!members.includes("deleted.txt"));
+    assert(!members.includes("sparse.txt"));
     assert(!members.includes("ignored.txt"));
     assert(!members.some((member) => member.startsWith(".git/")));
   } finally {

@@ -43,7 +43,8 @@ blocks host tools; it does not start a sandbox.
 
 `--sandbox-sync-once` and `--sandbox-watch` cannot be combined. The former copies
 host files once, keeps sandbox-only files, and excludes VCS metadata plus Git-ignored
-files by default. `--sandbox-avoid-git-ignore` includes Git-ignored files.
+files by default. Tracked paths missing from disk are skipped, including deleted files
+and files absent from a sparse checkout. `--sandbox-avoid-git-ignore` includes Git-ignored files.
 `--sandbox-watch` starts a two-way Mutagen sync for the session.
 
 In sandbox mode, before the first agent turn, loaded Pi skill directories are mirrored to
