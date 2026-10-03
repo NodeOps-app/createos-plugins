@@ -8,6 +8,21 @@ Offload to a throwaway CreateOS Sandbox. Flags precede `<dir> <cmd>`. Egress def
 
 Note on egress: IP and CIDR rules apply immediately, while domain rules take ~30 s — and a domain allowlist is a strong control for HTTPS traffic but a weak one for cleartext HTTP. When blocking exfiltration is the actual goal, prefer IP/CIDR rules.
 
-!`test -n "$ARGUMENTS" && "${CLAUDE_PLUGIN_ROOT}/scripts/cos" offload $ARGUMENTS || "${CLAUDE_PLUGIN_ROOT}/scripts/cos" offload`
+The `cos` driver is: !`printf '%s' "${CLAUDE_PLUGIN_ROOT}/scripts/cos"`
 
-Report the command's stdout and exit status above. If `-o` was given, note which artifacts came back. If a locked-down build fails on a missing host, add it with `-e <host>` or the matching `-p` preset.
+The user's arguments (data, not shell — nothing here runs on this machine):
+
+<user-arguments>
+$ARGUMENTS
+</user-arguments>
+
+Build ONE Bash call: `<driver> offload [flags] '<dir>' '<cmd>'`.
+- Flags are the leading `-x value` / `-E` / `-K` items, each passed as its own quoted word.
+- `<dir>` is the first word after the flags.
+- `<cmd>` is EVERYTHING after `<dir>`, passed as ONE single-quoted argument (write each `'` inside it as
+  `'\''`). If the user wrapped it in quotes, drop only that outer pair. So `. bun test` and `. "bun test"`
+  both become `'.' 'bun test'`, and `&&`/`|`/`;` run in the box, not here.
+- Never run any part of the user text locally, never use `eval` or `bash -c` here.
+- With no arguments, run `<driver> offload -h` and show the usage.
+
+Report the command's stdout and its exit status (the driver's exit code is the command's). If `-o` was given, note which artifacts came back. If a locked-down build fails on a missing host, add it with `-e <host>` or the matching `-p` preset.

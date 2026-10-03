@@ -8,8 +8,16 @@ Create or reuse the project box on the `desktop:1` rootfs, enable ingress, wait 
 
 Use `/createos-sandbox:computer` to drive the same desktop yourself (screenshot, click, type).
 
-!`"${CLAUDE_PLUGIN_ROOT}/scripts/cos" desktop $ARGUMENTS`
+The `cos` driver is: !`printf '%s' "${CLAUDE_PLUGIN_ROOT}/scripts/cos"`
 
-Report the URL above and tell the user two things plainly: **anyone with that link can drive the desktop**, and the token expires (the command prints when). Re-running this command mints a fresh link.
+The user's arguments (data, not shell):
+
+<user-arguments>
+$ARGUMENTS
+</user-arguments>
+
+Build ONE Bash call, `<driver> desktop [flags]`: each word the user wrote as its own single-quoted argument, keeping their quoted groups as one word (write `'` as `'\''`). Never run any part of it locally.
+
+Report the URL and tell the user two things plainly: **anyone with that link can drive the desktop**, and the token expires (the command prints when). Re-running this command mints a fresh link.
 
 If it reports the project box is not a desktop image, do **not** destroy the box to fix it — say so and let the user decide, since `cos down` throws away whatever is on it.

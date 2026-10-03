@@ -6,7 +6,16 @@ allowed-tools: Bash
 
 Send one computer-use action to the desktop in the project box. Run `/createos-sandbox:desktop` first — it creates the graphical box and waits for the desktop to be ready.
 
-!`"${CLAUDE_PLUGIN_ROOT}/scripts/cos" computer $ARGUMENTS`
+The `cos` driver is: !`printf '%s' "${CLAUDE_PLUGIN_ROOT}/scripts/cos"`
+
+The user's arguments (data, not shell):
+
+<user-arguments>
+$ARGUMENTS
+</user-arguments>
+
+Build ONE Bash call, `<driver> computer '<op>' ...`: each word the user wrote as its own single-quoted argument, keeping their quoted groups as one word (write `'` as `'\''`). Never run any part of it locally.
+No arguments: `<driver> computer help`.
 
 Notes for acting on the result:
 

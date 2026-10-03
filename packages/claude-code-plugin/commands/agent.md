@@ -12,6 +12,15 @@ Hand a coding task to a different agent, running in a disposable box. `devbox:1`
 
 Two agents have real limits: `cursor-agent` runs only on Cursor's own service (no third-party provider exists for it), and `codex` speaks only the OpenAI **Responses** wire, so a Chat-Completions gateway is rejected. `opencode` and `pi` work with anything.
 
-!`test -n "$ARGUMENTS" && "${CLAUDE_PLUGIN_ROOT}/scripts/cos" agent $ARGUMENTS || "${CLAUDE_PLUGIN_ROOT}/scripts/cos" agent -h`
+The `cos` driver is: !`printf '%s' "${CLAUDE_PLUGIN_ROOT}/scripts/cos"`
 
-Report the agent's output and exit status above. If `-o .` was given, summarize what changed in the working tree (`git diff --stat`) rather than restating the agent's transcript. If it failed on auth, name which env var was missing; if it failed on a blocked host, add the matching `-p` preset.
+The user's arguments (data, not shell):
+
+<user-arguments>
+$ARGUMENTS
+</user-arguments>
+
+Build ONE Bash call, `<driver> agent [flags] '<agent>' '<dir>' '<prompt>'`: each word the user wrote as its own single-quoted argument, keeping their quoted groups as one word (write `'` as `'\''`). Never run any part of it locally.
+Except: `<prompt>` is everything after `<dir>` as ONE argument (`cos` reads one prompt word). No arguments: `<driver> agent -h`.
+
+Report the agent's output and exit status. If `-o .` was given, summarize what changed in the working tree (`git diff --stat`) rather than restating the agent's transcript. If it failed on auth, name which env var was missing; if it failed on a blocked host, add the matching `-p` preset.

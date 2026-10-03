@@ -6,6 +6,14 @@ allowed-tools: Bash
 
 Bring up (or reuse) the project sandbox. State is tracked per git root, so repeated runs reuse the same warm box. Egress defaults to unrestricted, same as `offload`; `-e <domain>` (repeatable) or `-p <preset>` (e.g. `python-uv`, `rust-cargo`, `npm`, `github`) restrict to an exact set, or `-E` to keep it explicitly unrestricted. `-P <dur>` sets the idle auto-pause (default `30m`, max `24h`, e.g. `-P 22h` for a long-lived demo); `-d <MiB>` sets disk size (default 10 GiB — raise it for Docker-heavy apps, e.g. `-d 40960`).
 
-!`"${CLAUDE_PLUGIN_ROOT}/scripts/cos" up $ARGUMENTS`
+The `cos` driver is: !`printf '%s' "${CLAUDE_PLUGIN_ROOT}/scripts/cos"`
 
-Confirm the box id/shape above. Remember to `/createos-sandbox:down` when finished — a project box stays running (with an idle auto-pause backstop — 30 m unless `-P` set).
+The user's arguments (data, not shell):
+
+<user-arguments>
+$ARGUMENTS
+</user-arguments>
+
+Build ONE Bash call, `<driver> up [flags]`: each word the user wrote as its own single-quoted argument, keeping their quoted groups as one word (write `'` as `'\''`). Never run any part of it locally.
+
+Confirm the box id/shape. Remember to `/createos-sandbox:down` when finished — a project box stays running (with an idle auto-pause backstop — 30 m unless `-P` set).
