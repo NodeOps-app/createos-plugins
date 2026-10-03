@@ -53,6 +53,26 @@ control plane rather than read from docs:
 Never name a component input `code`: Langflow reserves `template["code"]` for a
 component's own source, and an input by that name silently replaces it.
 
+`claude-code-plugin/` also ships a Claude Code **mod** (`hooks/dashboard.tsx`,
+named under `modules` in `hooks/hooks.json` beside the classic command hooks):
+a live sandbox TUI pane opened by `/sandboxes`. It is a view for the
+person only — the model's path stays the skill and `cos`. The TUI is a
+`Client` surface module (`hooks/tui.tsx`): it draws and posts intents, and
+`dashboard.tsx` validates every post before it runs the CLI — keep side
+effects out of `tui.tsx`. A Client never receives Escape (it hands focus
+back). The TUI binds plain keys only — every ctrl chord is already Claude
+Code's (`ctrl+g` editor, `ctrl+x` mod prefix, …) or the terminal's (Ghostty
+splits, tmux prefix); do not add one. Any text reaching a drawn `Text` must
+be free of control characters (CLI colour codes, pasted tabs/newlines) or the
+whole pane blanks — CLI output goes through `run()`/`clean()` in
+`dashboard.tsx`, typed text is scrubbed in `tui.tsx`. Slash commands must not
+splice `$ARGUMENTS` into a local `!` shell line (local command injection);
+Claude runs the driver with quoted args instead. State lives in
+`$.state` (contract in `types/index.d.ts`) because a hot reload drops module
+variables; `atom` refs must use string literals or `claude plugin validate`
+refuses them. Panes dock on the right; the mod API has no side option. Check
+with `claude plugin validate .` and `claude plugin test .` in that folder.
+
 `herdr-plugin/` targets [Herdr](https://herdr.dev), a terminal workspace
 manager rather than a coding agent, so it inverts the shape of the others.
 Instead of teaching an agent to use sandboxes, it puts the **agent itself**

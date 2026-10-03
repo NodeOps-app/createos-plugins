@@ -14,6 +14,8 @@ A [Claude Code](https://docs.claude.com/en/docs/claude-code) plugin that gives C
 
 ---
 
+> **New here?** Start with the [user guide](./guide/README.md) — walkthroughs with terminal recordings, a "which command?" chart, and FAQs.
+
 ## Contents
 
 - [Why offload?](#why-offload)
@@ -34,6 +36,7 @@ A [Claude Code](https://docs.claude.com/en/docs/claude-code) plugin that gives C
 - [Heavy builds](#heavy-builds)
 - [Uploads & excludes](#uploads--excludes)
 - [Shapes](#shapes)
+- [Dashboard pane (mod)](#dashboard-pane-mod)
 - [The skill](#the-skill)
 - [Hooks](#hooks)
 - [Direct CLI cookbook](#direct-cli-cookbook)
@@ -419,6 +422,39 @@ Add more with `-x <glob>` (repeatable). Install dependencies **inside** the box 
 - Default shape: **`s-1vcpu-1gb`**. Default rootfs: **`devbox:1`**.
 - Pick a bigger box with `-s <shape>`. A shape your account can't use is rejected with an `Allowed: [...]` list — pick from it rather than guessing.
 - Discover what you can boot: `createos sandbox shapes` (sizes) and `createos sandbox rootfs` (images).
+
+## Dashboard pane (mod)
+
+The plugin ships a [Claude Code mod](https://claude.dev/blog/getting-started-with-claude-code-mods/) (Claude Code 2.1.287+): a full keyboard-and-mouse TUI of your sandboxes, docked beside the conversation.
+
+```
+┌ chat ─────────┬ ≡ CreateOS Sandboxes  live · 00:39:53  : actions click to focus ┐
+│               │ ╭─ Filter ───────────────────────────╮ ╭─ Overview ──────────╮ │
+│ /sandboxes    │ │ ⌕ Type / to filter…                │ │ Running 1  Paused 0 │ │
+│               │ ╰────────────────────────────────────╯ ╰─────────────────────╯ │
+│               │ ╭─ Sandboxes 1/1 ────────────────────╮ ╭─ Details ───────────╮ │
+│               │ │   Name        Status   Shape  Age  │ │ IP   10.0.60.162    │ │
+│               │ │ ▌ cos-proj-…  running  2c/2g  10h  │ │ https://…createos.sh│ │
+│               │ ╰────────────────────────────────────╯ ╰─────────────────────╯ │
+│               │ ╭─ Output ───────────────────────────╮ ╭─ Keys ──────────────╮ │
+│               │ │ ok $ bun test                      │ │ ↑↓ jk   move        │ │
+│               │ ╰────────────────────────────────────╯ ╰─────────────────────╯ │
+│               │ / Filter  x Exec  p Pause  s Resume  d Down  : Actions         │
+├───────────────┴────────────────────────────────────────────────────────────────┤
+│ ❯ prompt                                                                       │
+└────────────────────────────────────────────────────────────────────────────────┘
+```
+
+- **Open it** with `/sandboxes`. It also opens by itself at session start when you have active boxes and the terminal is 144+ columns wide.
+- **Where it shows:** docked on the right in the fullscreen layout from 110 columns; otherwise inline above the prompt. Claude Code decides the side, not the mod.
+- **Focus:** click the TUI to type into it; Esc hands the keys back to the prompt. The TUI binds **no ctrl chords** — those belong to Claude Code (`ctrl+g` editor, `ctrl+t`, `ctrl+o`, `ctrl+r`, `ctrl+s`, the `ctrl+x` mod prefix) and to your terminal or multiplexer (Ghostty splits, tmux prefix). Backspace in an empty field closes it.
+- **Whose boxes:** the list shows every box on your CreateOS account. Boxes this plugin made (`cos-*`) are drawn normally; others are dimmed, marked "Made by: another tool" in Details, and Down warns before touching one. On open, the project box (`cos-proj-*`) is selected — never a stranger's box.
+- **Keys:** `jk`/arrows move, `enter` (or a click on the selected row) opens the action palette, `:` the same palette with search, `/` filter, `x` exec a command in the box (`createos sandbox exec`), `p`/`s` pause/resume, `f` fork (paused box), `e` expose/unexpose, `y` copy the public URL, `d` down (asks; `y` confirms), `u` up (`cos up`), `r` refresh, `o` cycle sort.
+- **Live:** it re-reads `createos -o json sandbox ls` every 15 s and right after any Bash call Claude makes that mentions `cos` or `createos`.
+
+`hooks/dashboard.tsx` owns data and side effects; `hooks/tui.tsx` is a `Client` surface module that only draws and posts intents, which `dashboard.tsx` validates (known verbs, boxes in the list) before it runs the CLI by argv.
+
+The pane is a view for you; Claude still uses the skill and the `cos` driver. Develop it with `claude plugin validate .` and `claude plugin test .` from this folder.
 
 ## The skill
 
