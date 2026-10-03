@@ -649,7 +649,10 @@ cmd_sync(){
   fi
 
   local -a args=(sandbox sync --local "$cli_dir" --remote "$remote" -y)
-  if "$CLI" sandbox sync --help 2>/dev/null | grep -q -- '--mode'; then
+  # Not `--help | grep -q`: grep exits on the first match, the CLI then dies of
+  # SIGPIPE, and pipefail turns that into a false "CLI lacks --mode".
+  local sync_help; sync_help=$("$CLI" sandbox sync --help 2>/dev/null || true)
+  if [[ $sync_help == *--mode* ]]; then
     args+=(--mode "$mode")
     local p; for p in "${DEFAULT_EXCLUDES[@]}"; do args+=(--exclude "$p"); done   # skip big/regenerable dirs
     [ "${#excl[@]}" -gt 0 ] && args+=("${excl[@]}")
@@ -725,7 +728,8 @@ cmd_status(){
       && echo "  pid $pid  127.0.0.1:${rest%%:*} → box:${rest##*:}" || echo "  (dead $pid $rest)"; done < "$TUNLIST"
   fi
   [ -n "$id" ] && "$CLI" -o json sandbox ls 2>/dev/null | jq -r --arg i "$id" '.[]|select(.id==$i)|"status: \(.status)  ip=\(.ip)"' || true
-  [ -n "$(state_get cluster_net)" ] && cluster_ls
+  # if/fi, not `[ ] && …`: as the last line, a false test made `status` exit 1 on a healthy box.
+  if [ -n "$(state_get cluster_net)" ]; then cluster_ls; fi
 }
 
 # ───────────────────────────────────────── tunnel: box port → local (background)
@@ -1117,7 +1121,12 @@ cmd_fork(){
   # here — after the fork has already happened, orphaning the clone.
   echo "cos: resuming project box ${id}…" >&2
   "$CLI" sandbox resume "$id" >/dev/null 2>&1 || echo "cos: ⚠ resume of $id failed — run 'createos sandbox resume $id'" >&2
-  newid=$(comm -13 <(printf '%s\n' "$before") <(printf '%s\n' "$after") | head -1)
+  # Pure bash, no `<(…)`: process substitution needs /dev/fd, which the slash-command
+  # shell lacks — `comm` failed there AFTER the fork existed, leaking the clone.
+  local x; newid=""
+  while IFS= read -r x; do
+    [[ -n $x && $'\n'$before$'\n' != *$'\n'$x$'\n'* ]] && { newid=$x; break; }
+  done <<<"$after"
   [ -n "$newid" ] || { echo "cos: forked, but couldn't auto-resolve the new id — see 'createos sandbox ls'" >&2; return 0; }
   # A fork is an independent clone, so `down` won't destroy it — but record it, or
   # nothing ever will and it leaks silently. `down` reports it; `down -f` reaps it.
