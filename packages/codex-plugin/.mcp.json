@@ -1,0 +1,10 @@
+{
+  "mcpServers": {
+    "createos-sandbox": {
+      "command": "bash",
+      "args": ["${PLUGIN_ROOT}/scripts/start-mcp.sh"],
+      "env_vars": ["PATH", "CREATEOS_API_KEY", "CREATEOS_WORKSPACE_ROOT", "CREATEOS_JOB_DATA"],
+      "tool_timeout_sec": 60
+    }
+  }
+}
