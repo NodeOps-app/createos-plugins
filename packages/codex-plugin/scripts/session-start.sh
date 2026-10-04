@@ -6,14 +6,16 @@
 # like Claude Code does, so plain stdout is discarded and the agent is left with
 # no driver path at all). Two things differ, and only two:
 #
-#   1. Codex sets no CLAUDE_PLUGIN_ROOT, so `cos` is resolved relative to this
-#      script. The driver next to it is a real copy of the canonical
+#   1. Resolve `cos` relative to this script, so it also works outside a hook.
+#      Current Codex plugin hooks set PLUGIN_ROOT and CLAUDE_PLUGIN_ROOT.
+#      The driver next to it is a real copy of the canonical
 #      claude-code-plugin/scripts/cos, written by scripts/sync-shared.sh —
 #      symlinks are not an option, the Codex installer copies regular files only.
-#   2. No ${CLAUDE_PLUGIN_ROOT} warning: that variable does not exist here.
+#   2. Do not assume plugin hook variables exist in agent shell calls.
 set -euo pipefail
 
 cos="$(cd "$(dirname "$0")" && pwd)/cos"
+plugin_root="$(cd "$(dirname "$0")/.." && pwd)"
 
 command -v jq >/dev/null 2>&1 || exit 0
 
@@ -49,6 +51,10 @@ $cli_status
 
 The sandbox driver is at: $cos
 $where
+The plugin also provides MCP tools for durable jobs: start_job, get_job, get_job_logs, and download_artifact. Read the sandbox-jobs skill for that workflow. Use open_jobs to show the job panel when the host supports MCP Apps. The MCP job API defaults to denied outbound access and reports retained sandboxes explicitly.
+For CreateOS Sandbox product, CLI, SDK, REST API, limits, or integration questions, read the createos-sandbox-docs skill at: $plugin_root/skills/createos-sandbox-docs/SKILL.md
+The shared live docs index is at: $plugin_root/skills/using-createos-sandbox/references/docs.md
+Fetch only the relevant official markdown pages; refresh moved links from https://createos.sh/docs/llms.txt. Documentation questions do not require sign-in or creating a sandbox. Use list_sandboxes for live account inventory; list_jobs is only local workspace job history.
 If the driver cannot be run, stop and say so; do not substitute raw \`createos sandbox\` primitives, which drop egress restriction, keepalive, auto-destroy, and the auth preflight.
 
 Picking the verb (get this right before running anything):

@@ -15,3 +15,24 @@ protocol live in the monorepo root [`CLAUDE.md`](../../CLAUDE.md), which is
 loaded automatically from this directory.
 
 <!-- MESH:END -->
+
+## Local implementation
+
+- Root `plugin.json` and `mcp.json` are the portable package. The compatibility
+  overlay and `.mcp.json` remain for older Codex hosts. Hook definitions live in
+  `hooks/hooks.json`; `manifest.json` is retained only for older installations.
+- `src/` contains the local MCP job server, durable job worker, and MCP Apps
+  panel. `npm run check` type-checks, builds, and tests them. Ship the generated
+  `mcp/` files with the plugin; installed plugins need no `node_modules`.
+- The worker imports `../shared/sandbox-engine.ts` at build time. Do not copy or
+  replace that engine. Each job runs in a dedicated tmux server, survives MCP
+  client disconnects, and retains state in private workspace-scoped storage.
+- MCP job egress is denied by default. Explicit unrestricted mode is available;
+  hostname presets are not presented as enforced controls.
+- Retrieve individual artifacts as bounded bytes, never by extracting remote
+  archives into the checkout. Keep the sandbox if a requested pull fails.
+- Canonical `scripts/cos`, `scripts/offload-hint.sh`, and the
+  `using-createos-sandbox` skill still live in `claude-code-plugin`. Changes
+  there must pass `../../scripts/sync-shared.sh --check`.
+- This package is a local stdio integration. Hosted OAuth and a registered
+  ChatGPT connection are separate work; do not add a guessed server URL or app ID.
