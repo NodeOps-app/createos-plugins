@@ -3,7 +3,7 @@
 # destroys one real sandbox. ORB_TOKEN is fake, so Amp rejecting it proves the
 # token reached `amp orb bootstrap` as the orb's user.
 # Checks are eval'd strings, so their expansions and helper calls are deferred on purpose.
-# shellcheck disable=SC2016,SC2329
+# shellcheck disable=SC2016,SC2034,SC2329
 set -uo pipefail
 cd "$(dirname "$0")" || exit
 
@@ -38,12 +38,22 @@ trap 'ORB_OPERATION=delete ./dispatch.sh >/dev/null 2>&1; rm -f "$log" "$seen"' 
 
 echo "orb $ORB_ID -> sandbox $name"
 check "delete with no sandbox exits 0" 'op delete'
+check "delete fails when the API is unreachable" '! CREATEOS_SANDBOX_URL=https://127.0.0.1:9 op delete'
 check "pause with no sandbox exits 0" 'op pause'
 check "unknown operation exits non-zero" '! op bogus'
 
 check "fresh spawn exits 0" 'op spawn || { tail -20 "$log"; false; }'
 check "fresh spawn under 5 min (${took}s)" '[ "$took" -lt 300 ]'
 check "sandbox is running" '[ "$(status)" = running ]'
+template="${CREATEOS_ORB_TEMPLATE:-amp-orb}"
+rootfs=$(createos -o json sandbox get "$name" | jq -r .rootfs)
+read -r tstatus tid < <(createos -o json sandbox template show "$template" 2>/dev/null | jq -r '"\(.status) \(.id)"')
+echo "info template $template is ${tstatus:-missing}; orb booted from $rootfs"
+# A sandbox reports its template rootfs by id, not by name.
+check "booted from the template when it is ready" '[ "$tstatus" != ready ] || [ "$rootfs" = "$tid" ]'
+check "fell back to devbox:1 when it is not" \
+	'[ "$tstatus" = ready ] || { [ "$rootfs" = devbox:1 ] && grep -q "booting devbox:1" "$log"; }'
+check "submitted the template at most once" '[ "$(grep -c "Submitted template" "$log")" -le 1 ]'
 check "amp at /usr/local/bin/amp" 'in_box "/usr/local/bin/amp --version" >/dev/null'
 check "user has passwordless sudo" 'in_box "sudo -u user sudo -n true"'
 check "user home is writable" 'in_box "sudo -u user test -w /home/user"'
@@ -84,6 +94,7 @@ check "sandbox is running after the race" '[ "$(status)" = running ]'
 ORB_OPERATION=pause ./dispatch.sh >/dev/null 2>&1
 ORB_OPERATION=spawn ./dispatch.sh >/dev/null 2>&1 &
 sleep 5
+check "status mid-resume is resuming" '[ "$(status)" = resuming ]'
 check "pause during resuming exits 0" 'op pause'
 wait
 check "sandbox is paused after the race" '[ "$(status)" = paused ]'

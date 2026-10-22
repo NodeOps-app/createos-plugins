@@ -74,7 +74,10 @@ for the Pi extension.
 
 `amp-orb-provider/` is a bash dispatch program for `amp orb provider`, not an
 agent plugin. Amp's `ORB_IMAGE` cannot boot on CreateOS (templates build only
-`FROM nodeops/sandbox:*`), so spawn provisions `devbox:1` instead. Read its
+`FROM nodeops/sandbox:*`, no `COPY`/`ADD`), so its `Dockerfile` rebuilds the
+image contract with `RUN`. The first spawn builds that template if missing and
+falls back to `devbox:1` plus in-sandbox setup if it is not ready within two
+minutes. Do not raise that wait: Amp kills a job after five minutes. Read its
 README before touching it.
 
 Marketplace index is the root `README.md`; each package has its own `README.md`.
