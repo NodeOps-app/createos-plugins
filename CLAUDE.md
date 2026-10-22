@@ -1,8 +1,8 @@
 # CLAUDE.md — createos (integrations)
 
-Public plugin marketplace and integrations for CreateOS Sandbox. Six packages
+Public plugin marketplace and integrations for CreateOS Sandbox. Seven packages
 ship host integrations that run ad-hoc / heavy / untrusted code in disposable
-CreateOS sandboxes — five through the authed `createos` CLI, one (Langflow)
+CreateOS sandboxes — six through the authed `createos` CLI, one (Langflow)
 straight against the REST API:
 
 | Package                          | IDE / host       | Path                                  |
@@ -12,6 +12,7 @@ straight against the REST API:
 | `@createos/opencode`             | OpenCode         | `packages/opencode-plugin/`           |
 | `@nodeops-createos/dsh-createos` | DeepSeek Harness | `packages/dsh-createos/`              |
 | `createos.sandbox`               | Herdr            | `packages/herdr-plugin/`              |
+| `amp-orb-provider`               | Amp (orbs)       | `packages/amp-orb-provider/`          |
 | `langflow-sandbox-createos`      | Langflow         | `packages/langflow-sandbox-createos/` |
 
 `langflow-sandbox-createos/` is the odd one out twice over: it is **Python**, not
@@ -70,6 +71,11 @@ subdirectory here cannot be installed by git URL. It lives at
 Do not "fix" this by symlinking a manifest to the root — Orca rejects symlinks
 anywhere in plugin content, and this repository's root already carries symlinks
 for the Pi extension.
+
+`amp-orb-provider/` is a bash dispatch program for `amp orb provider`, not an
+agent plugin. Amp's `ORB_IMAGE` cannot boot on CreateOS (templates build only
+`FROM nodeops/sandbox:*`), so spawn provisions `devbox:1` instead. Read its
+README before touching it.
 
 Marketplace index is the root `README.md`; each package has its own `README.md`.
 
@@ -145,6 +151,7 @@ Integrations do not all follow the same path — a CLI change reaches the shelle
 | `opencode-plugin`           | OpenCode         | shells out to `createos` CLI              | `Integrations/OpenCode`         |
 | `pi-extension`              | Pi               | shells out to `createos` CLI              | `Integrations/Pi`               |
 | `herdr-plugin`              | Herdr            | shells out to `createos` CLI              | `Integrations/Herdr`            |
+| `amp-orb-provider`          | Amp              | shells out to `createos` CLI              | **none yet**                    |
 | `orca-plugin`               | Orca             | pointer only — code lives in its own repo | `Integrations/Orca`             |
 | `dsh-createos`              | DeepSeek Harness | imports the TypeScript SDK                | `Integrations/DeepSeek-Harness` |
 | `langflow-sandbox-createos` | Langflow         | calls the REST API directly               | **none yet**                    |
