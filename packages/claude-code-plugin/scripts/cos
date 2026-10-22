@@ -94,8 +94,8 @@ add_env_as(){ local name=$1 src=$2
   [ -n "${!src:-}" ] || die "\$$src is not set in this shell — export it, or name another with -k <VAR>"
   COS_ENV+=(--env "$name=${!src}"); }
 
-resolve_id(){ "$CLI" -o json sandbox ls 2>/dev/null | jq -r --arg n "$1" '.[]|select(.name==$n).id' | head -1; }
-box_status(){ "$CLI" -o json sandbox ls 2>/dev/null | jq -r --arg i "$1" '.[]|select(.id==$i)|.status'; }
+resolve_id(){ "$CLI" -o json sandbox ls 2>/dev/null | jq -r --arg n "$1" '.[]?|select(.name==$n).id' | head -1; }
+box_status(){ "$CLI" -o json sandbox ls 2>/dev/null | jq -r --arg i "$1" '.[]?|select(.id==$i)|.status'; }
 
 # A box idles into `paused` after 30m (auto-pause), and the API still holds its name.
 # Treat paused as live: it is reusable (resume it) and it blocks a same-name create.
@@ -108,7 +108,7 @@ box_resume_if_paused(){ [ "$(box_status "$1")" = paused ] || return 0
 # poll until the box is running (race guard before first push/exec)
 wait_running(){ local id=$1 to=${2:-30} i s
   for ((i=0;i<to;i++)); do
-    s=$("$CLI" -o json sandbox ls 2>/dev/null | jq -r --arg i "$id" '.[]|select(.id==$i)|.status')
+    s=$("$CLI" -o json sandbox ls 2>/dev/null | jq -r --arg i "$id" '.[]?|select(.id==$i)|.status')
     [ "$s" = running ] && return 0
     sleep 1
   done
@@ -724,7 +724,7 @@ cmd_status(){
     while read -r pid rest; do kill -0 "$pid" 2>/dev/null \
       && echo "  pid $pid  127.0.0.1:${rest%%:*} → box:${rest##*:}" || echo "  (dead $pid $rest)"; done < "$TUNLIST"
   fi
-  [ -n "$id" ] && "$CLI" -o json sandbox ls 2>/dev/null | jq -r --arg i "$id" '.[]|select(.id==$i)|"status: \(.status)  ip=\(.ip)"' || true
+  [ -n "$id" ] && "$CLI" -o json sandbox ls 2>/dev/null | jq -r --arg i "$id" '.[]?|select(.id==$i)|"status: \(.status)  ip=\(.ip)"' || true
   [ -n "$(state_get cluster_net)" ] && cluster_ls
 }
 
@@ -1105,13 +1105,13 @@ cmd_fork(){
   echo "cos: pausing $id to snapshot (brief; needed to fork)…" >&2
   "$CLI" sandbox pause "$id" >/dev/null 2>&1 || die "pause failed"
   local before after newid
-  before=$("$CLI" -o json sandbox ls 2>/dev/null | jq -r '.[].id' | sort)
+  before=$("$CLI" -o json sandbox ls 2>/dev/null | jq -r '.[]?.id' | sort)
   echo "cos: forking…" >&2
   if ! "$CLI" sandbox fork "$id" >"$STATE_DIR/last-fork.log" 2>&1; then
     "$CLI" sandbox resume "$id" >/dev/null 2>&1 || true
     die "fork failed — see $STATE_DIR/last-fork.log (project box resumed)"
   fi
-  after=$("$CLI" -o json sandbox ls 2>/dev/null | jq -r '.[].id' | sort)
+  after=$("$CLI" -o json sandbox ls 2>/dev/null | jq -r '.[]?.id' | sort)
   # brace the expansion: a bare `$id` followed directly by a multibyte char (the
   # ellipsis) is parsed as part of the variable NAME, so `set -u` kills the script
   # here — after the fork has already happened, orphaning the clone.
