@@ -1,7 +1,7 @@
 {
   "name": "createos-sandbox-codex",
   "displayName": "CreateOS Sandbox",
-  "version": "0.2.0",
+  "version": "0.3.0",
   "description": "Run ad-hoc, heavy, or untrusted code OFF your machine in disposable CreateOS Sandboxes via the `cos` driver — offload, fanout, scratch shell, reusable box with sync, tunnel, expose, clusters, S3 disks, VPN, pause/resume, custom images, and a graphical desktop you drive by screenshot/click/type.",
   "author": {
     "name": "NodeOps",
@@ -10,11 +10,15 @@
   "homepage": "https://createos.sh",
   "keywords": ["sandbox", "createos", "remote-exec", "isolation", "desktop", "computer-use"],
   "skills": "./skills/",
+  "hooks": "./hooks/hooks.json",
+  "mcpServers": "./.mcp.json",
   "interface": {
     "displayName": "CreateOS Sandbox",
-    "shortDescription": "Offload code to disposable remote sandboxes",
+    "shortDescription": "Run remote jobs, inspect logs, and retrieve artifacts",
     "developerName": "NodeOps",
     "category": "Developer Tools",
-    "websiteURL": "https://createos.sh"
+    "websiteURL": "https://createos.sh",
+    "capabilities": ["Read", "Write", "Interactive"],
+    "defaultPrompt": ["Show my CreateOS sandbox jobs", "Run this project's tests in a CreateOS sandbox"]
   }
 }

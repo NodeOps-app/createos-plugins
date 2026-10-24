@@ -88,13 +88,13 @@ cos offload -p python-uv -p rust-cargo -x target -o dist . 'uv sync --frozen && 
 # trusted heavy build, explicitly unrestricted egress
 cos offload -E -s s-2vcpu-2gb . 'cargo build --release'
 
-# untrusted script, outbound locked to exactly what it needs
-cos offload -e pypi.org -e files.pythonhosted.org ./suspect 'python3 main.py'
+# untrusted script with outbound access denied by an enforced IP rule
+cos offload -e 192.0.2.1/32 ./suspect 'python3 main.py'
 ```
 
 Two things about this that are easy to get wrong:
 
-- **Egress is unrestricted by default.** A fresh box can reach anything; `cos` prints a one-line notice. Restricting is opt-in with `-p <preset>` or `-e <domain>`. So "run this untrusted thing in a sandbox" is only half done until you pass one of those.
+- **Egress is unrestricted by default.** A fresh box can reach anything; `cos` prints a one-line notice. Hostname rules and hostname presets are accepted but are not enforced by the control plane. Use enforced IP/CIDR rules when restricting outbound access; `cos exec -N` denies all egress. For a multi-file offload with no outbound access, use `-e 192.0.2.1/32`, the same deny-all rule. Do not describe hostname presets as an exfiltration barrier.
 - **Uploads are one-way.** Box-side changes never touch the local tree unless you ask with `-o <path>`. `.git`, `node_modules`, `target`, `.venv` and friends are excluded from the upload by default — dependencies are meant to be built _inside_ the box.
 
 Long, quiet builds survive a dropped connection: the command runs detached with a heartbeat watcher that re-attaches if the stream dies. The real exit code is preserved.

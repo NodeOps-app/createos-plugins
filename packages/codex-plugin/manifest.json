@@ -1,6 +1,6 @@
 {
   "name": "createos-sandbox-codex",
-  "version": "0.2.0",
+  "version": "0.3.0",
   "description": "Run ad-hoc, heavy, or untrusted code OFF your machine in disposable CreateOS Sandboxes. One-shot offload, parallel fanout, scratch shell, reusable box with sync, tunnel, public HTTPS expose, clusters, S3 disks, VPN, pause/resume, custom images, and a graphical desktop you drive by screenshot/click/type.",
   "keywords": ["createos", "sandbox", "offload", "remote", "compute", "desktop", "computer-use"],
   "paths": {
