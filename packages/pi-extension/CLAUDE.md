@@ -20,7 +20,7 @@ Pi agent (local)  →  createos CLI  →  CreateOS API  →  Sandbox
 | ----------------------- | ---------------------------------------------------------------------------------------- |
 | `index.ts`              | Extension entry point: flags, slash commands, lifecycle hooks                            |
 | `src/cli.ts`            | All `createos` CLI wrappers (sandbox, network, disk, device, tunnel, sync)               |
-| `src/tools.ts`          | 45 registered tools, with a compact `sandbox_` desktop surface                           |
+| `src/tools.ts`          | 46 registered tools, with a compact `sandbox_` desktop surface                           |
 | `src/ops.ts`            | BashOps/ReadOps/WriteOps/EditOps/LsOps backed by CLI exec/push/pull                      |
 | `src/sandbox-engine.ts` | Copy — canonical is `packages/shared/`. Offload, keepalive, egress presets, computer use |
 | `src/find-tool.ts`      | Remote find via `createos sandbox exec` (rg/POSIX find fallback)                         |
@@ -45,7 +45,7 @@ Pi agent (local)  →  createos CLI  →  CreateOS API  →  Sandbox
 - **No background resources from factory** — all started in `session_start`
 - **Cleanup in `session_shutdown`** — temp SSH key + sandbox destroy
 
-## Tool inventory (45 tools)
+## Tool inventory (46 tools)
 
 ### Built-in replacements (7)
 
@@ -68,9 +68,9 @@ returning health-checked HTTPS URLs for the ones that serve a port.
 `sandbox_desktop` mints a noVNC URL, `sandbox_computer` performs a named desktop operation,
 and `sandbox_screenshot` captures a PNG. This matches the compact OpenCode tool surface.
 
-### Sandbox config (5)
+### Sandbox config (6)
 
-`sandbox_ingress`, `sandbox_firewall`, `sandbox_bandwidth`,
+`sandbox_ingress`, `sandbox_labels`, `sandbox_firewall`, `sandbox_bandwidth`,
 `sandbox_shapes`, `sandbox_images`
 
 ### Ports & sync (3)

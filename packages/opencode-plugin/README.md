@@ -121,7 +121,7 @@ All tools are in the `sandbox` namespace and enabled for Code Mode. Effective na
 
 | Group             | Names                                                                                                                    |
 | ----------------- | ------------------------------------------------------------------------------------------------------------------------ |
-| Session/lifecycle | `status`, `create`, `info`, `list`, `pause`, `resume`, `fork`, `destroy`                                                 |
+| Session/lifecycle | `status`, `create`, `info`, `list`, `labels`, `pause`, `resume`, `fork`, `destroy`                                       |
 | Execution         | `exec`, `run_code`, `offload`, `fanout`                                                                                  |
 | Files             | `read`, `write`, `edit`, `patch`, `glob`, `grep`, `push`, `pull`                                                         |
 | Processes         | `process_start`, `process_list`, `process_get`, `process_output`, `process_stop`, `process_input`, `process_close_stdin` |

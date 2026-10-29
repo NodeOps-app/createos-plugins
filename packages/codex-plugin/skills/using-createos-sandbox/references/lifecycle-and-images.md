@@ -6,6 +6,7 @@ Read this when a box needs to outlive one command: parking it cheaply, branching
 
 - [pause and resume](#pause-and-resume)
 - [Idle auto-pause](#idle-auto-pause)
+- [Labels — tag and find boxes](#labels--tag-and-find-boxes)
 - [fork — branch a warm box](#fork--branch-a-warm-box)
 - [Images: built-in rootfs and custom templates](#images-built-in-rootfs-and-custom-templates)
 - [Environment variables](#environment-variables)
@@ -41,6 +42,23 @@ createos sandbox edit <id> --auto-pause off   # never auto-pause
 ```
 
 Raising it is the right move when a box is serving an exposed URL that people will hit intermittently — the default 30 minutes will park a demo box between visitors and the URL will appear dead until something resumes it.
+
+## Labels — tag and find boxes
+
+A label is a `KEY=VALUE` string pair stored on the box. Use labels to mark what a box is for (project, branch, team, job run), then find those boxes again later. `cos` does not set or read labels, so use the CLI directly:
+
+```bash
+createos sandbox create … --label team=backend --label env=test   # set at create time (repeatable)
+createos sandbox edit <id> --label env=prod                         # merge into a live box
+createos sandbox list --label team=backend --label env=test         # only boxes that match EVERY pair
+createos -o json sandbox get <id> | jq .labels                      # read them back
+```
+
+- `edit` merges: it adds or replaces the keys you pass and keeps all other keys. You cannot delete a key. `--label key=` stores an empty value; it does not remove the key.
+- `list` with `-o json` returns `null`, not `[]`, when no box matches.
+- Limits: at most 100 pairs, keys at most 128 bytes, values at most 1024 bytes, 64 KiB in total. The CLI rejects a bad `--label` before it calls the API.
+- Labels are only metadata. They do not change scheduling, egress, or billing.
+- To label a `cos up` box, get its id from `cos status` and run `createos sandbox edit <id> --label …`.
 
 ## fork — branch a warm box
 

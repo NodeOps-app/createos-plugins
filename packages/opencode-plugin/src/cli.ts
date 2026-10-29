@@ -131,7 +131,14 @@ export class CLI {
     return parse(await this.checked(["-o", "json", ...args], options));
   }
   async create(
-    options: { shape: string; rootfs: string; autoPause: string; network?: string; name?: string },
+    options: {
+      shape: string;
+      rootfs: string;
+      autoPause: string;
+      network?: string;
+      name?: string;
+      labels?: string[];
+    },
     signal?: AbortSignal,
   ): Promise<string> {
     signal?.throwIfAborted();
@@ -148,6 +155,7 @@ export class CLI {
     ];
     if (options.network) args.push("--network", options.network);
     if (options.name) args.push("--name", options.name);
+    if (options.labels) args.push(...options.labels);
     return identifier(record(await this.json(args)).id);
   }
   async destroy(id: string): Promise<void> {
