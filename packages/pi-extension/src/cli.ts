@@ -29,6 +29,12 @@ function parseJSON<T>(stdout: string): T {
   }
 }
 
+// List commands print an array, a `{ data }` envelope, or `null` when there is nothing to list.
+function parseList<T>(stdout: string): T[] {
+  const data = parseJSON<T[] | { data?: T[] } | null>(stdout);
+  return Array.isArray(data) ? data : (data?.data ?? []);
+}
+
 // --- Sandbox lifecycle ---
 
 export interface SandboxInfo {
@@ -39,6 +45,7 @@ export interface SandboxInfo {
   host_id?: string;
   region?: string;
   ingress_url_template?: string;
+  labels?: Record<string, string>;
   [key: string]: unknown;
 }
 
@@ -50,6 +57,7 @@ export async function createSandbox(
     ingress?: boolean;
     networks?: string[];
     name?: string;
+    labels?: Record<string, string>;
   },
 ): Promise<SandboxInfo> {
   const args = ["-o", "json", "sandbox", "create", "--shape", opts.shape ?? "s-2vcpu-2gb"];
@@ -59,6 +67,7 @@ export async function createSandbox(
   if (opts.networks) {
     for (const net of opts.networks) args.push("--network", net);
   }
+  args.push(...labelArgs(opts.labels));
   const res = await run(pi, args);
   if (res.code !== 0) throw new CLIError("sandbox create", res);
   return parseJSON<SandboxInfo>(res.stdout);
@@ -85,11 +94,22 @@ export async function resumeSandbox(pi: ExtensionAPI, id: string): Promise<void>
   if (res.code !== 0) throw new CLIError("sandbox resume", res);
 }
 
-export async function listSandboxes(pi: ExtensionAPI): Promise<SandboxInfo[]> {
-  const res = await run(pi, ["-o", "json", "sandbox", "list"]);
+// CLI validates the KEY=VALUE pairs (non-empty key, size limits) before calling the API.
+// It splits at the first "=", so a key containing "=" would silently become a different label.
+function labelArgs(labels?: Record<string, string>): string[] {
+  return Object.entries(labels ?? {}).flatMap(([k, v]) => {
+    if (k.includes("=")) throw new Error(`label key "${k}" must not contain "="`);
+    return ["--label", `${k}=${v}`];
+  });
+}
+
+export async function listSandboxes(
+  pi: ExtensionAPI,
+  labels?: Record<string, string>,
+): Promise<SandboxInfo[]> {
+  const res = await run(pi, ["-o", "json", "sandbox", "list", ...labelArgs(labels)]);
   if (res.code !== 0) throw new CLIError("sandbox list", res);
-  const data = parseJSON<SandboxInfo[] | { data: SandboxInfo[] }>(res.stdout);
-  return Array.isArray(data) ? data : data.data;
+  return parseList<SandboxInfo>(res.stdout);
 }
 
 export async function forkSandbox(
@@ -107,7 +127,7 @@ export async function forkSandbox(
 export async function editSandbox(
   pi: ExtensionAPI,
   id: string,
-  opts: { ingress?: boolean; egress?: string[] },
+  opts: { ingress?: boolean; egress?: string[]; labels?: Record<string, string> },
 ): Promise<void> {
   const args = ["sandbox", "edit", id];
   if (opts.ingress === true) args.push("--ingress", "on");
@@ -115,6 +135,7 @@ export async function editSandbox(
   if (opts.egress) {
     for (const rule of opts.egress) args.push("--egress", rule);
   }
+  args.push(...labelArgs(opts.labels));
   const res = await run(pi, args);
   if (res.code !== 0) throw new CLIError("sandbox edit", res);
 }
@@ -122,8 +143,7 @@ export async function editSandbox(
 export async function listShapes(pi: ExtensionAPI): Promise<unknown[]> {
   const res = await run(pi, ["-o", "json", "sandbox", "shapes"]);
   if (res.code !== 0) throw new CLIError("sandbox shapes", res);
-  const data = parseJSON<unknown[] | { data: unknown[] }>(res.stdout);
-  return Array.isArray(data) ? data : data.data;
+  return parseList<unknown>(res.stdout);
 }
 
 export async function listRootfs(pi: ExtensionAPI): Promise<unknown> {
@@ -366,8 +386,7 @@ export async function createNetwork(pi: ExtensionAPI, name: string): Promise<Net
 export async function listNetworks(pi: ExtensionAPI): Promise<NetworkInfo[]> {
   const res = await run(pi, ["-o", "json", "sandbox", "network", "ls"]);
   if (res.code !== 0) throw new CLIError("network ls", res);
-  const data = parseJSON<NetworkInfo[] | { data: NetworkInfo[] }>(res.stdout);
-  return Array.isArray(data) ? data : data.data;
+  return parseList<NetworkInfo>(res.stdout);
 }
 
 export async function getNetwork(pi: ExtensionAPI, idOrName: string): Promise<NetworkInfo> {
@@ -447,8 +466,7 @@ export async function createDisk(
 export async function listDisks(pi: ExtensionAPI): Promise<DiskInfo[]> {
   const res = await run(pi, ["-o", "json", "sandbox", "disk", "ls"]);
   if (res.code !== 0) throw new CLIError("disk ls", res);
-  const data = parseJSON<DiskInfo[] | { data: DiskInfo[] }>(res.stdout);
-  return Array.isArray(data) ? data : data.data;
+  return parseList<DiskInfo>(res.stdout);
 }
 
 export async function getDisk(pi: ExtensionAPI, idOrName: string): Promise<DiskInfo> {
@@ -504,8 +522,7 @@ export async function listDevices(pi: ExtensionAPI): Promise<DeviceInfo[]> {
   const res = await run(pi, ["-o", "json", "sandbox", "devices", "ls"]);
   if (res.code !== 0) throw new CLIError("devices ls", res);
   try {
-    const data = parseJSON<DeviceInfo[] | { data: DeviceInfo[] }>(res.stdout);
-    return Array.isArray(data) ? data : data.data;
+    return parseList<DeviceInfo>(res.stdout);
   } catch {
     return [];
   }

@@ -533,11 +533,24 @@ export function registerTools(pi: ExtensionAPI, getActive: () => ToolSandbox | n
       networks: Type.Optional(
         Type.Array(Type.String(), { description: "Network names to join at creation" }),
       ),
+      labels: Type.Optional(
+        Type.Record(Type.String(), Type.String(), {
+          description:
+            "Key/value tags to find this sandbox later with sandbox_list (max 100 pairs, key ≤128 bytes, value ≤1024 bytes)",
+        }),
+      ),
     }),
-    async execute(_id, { shape, rootfs, name, networks }, signal) {
+    async execute(_id, { shape, rootfs, name, networks, labels }, signal) {
       if (signal?.aborted) throw new Error("aborted");
       try {
-        const sb = await cli.createSandbox(pi, { shape, rootfs, name, networks, ingress: true });
+        const sb = await cli.createSandbox(pi, {
+          shape,
+          rootfs,
+          name,
+          networks,
+          labels,
+          ingress: true,
+        });
         const lines = [
           `Sandbox created: ${sb.id}`,
           `IP: ${sb.ip ?? "pending"}`,
@@ -604,6 +617,8 @@ export function registerTools(pi: ExtensionAPI, getActive: () => ToolSandbox | n
           `Shape: ${(info as any).shape ?? "n/a"}`,
           `Region: ${info.region ?? "n/a"}`,
         ];
+        const labels = formatLabels(info.labels);
+        if (labels) lines.push(`Labels: ${labels}`);
         if (info.ingress_url_template) lines.push(`Ingress: ${info.ingress_url_template}`);
         return { content: [{ type: "text", text: lines.join("\n") }], details: { sandbox: info } };
       } catch (err) {
@@ -617,17 +632,25 @@ export function registerTools(pi: ExtensionAPI, getActive: () => ToolSandbox | n
   pi.registerTool({
     name: "sandbox_list",
     label: "List Sandboxes",
-    description: "List all sandboxes owned by the user, running and paused.",
+    description:
+      "List sandboxes owned by the user, running and paused, optionally only those matching every given label.",
     promptSnippet: "List all sandboxes",
-    parameters: Type.Object({}),
-    async execute(_id, _params, signal) {
+    parameters: Type.Object({
+      labels: Type.Optional(
+        Type.Record(Type.String(), Type.String(), {
+          description: "Only return sandboxes that have every one of these key/value labels",
+        }),
+      ),
+    }),
+    async execute(_id, { labels }, signal) {
       if (signal?.aborted) throw new Error("aborted");
       try {
-        const sbs = await cli.listSandboxes(pi);
+        const sbs = await cli.listSandboxes(pi, labels);
         if (sbs.length === 0) return txt("No sandboxes found.");
-        const lines = sbs.map(
-          (s) => `${s.id} · ${s.status} · ${s.name ?? ""}${s.ip ? ` · ${s.ip}` : ""}`,
-        );
+        const lines = sbs.map((s) => {
+          const tags = formatLabels(s.labels);
+          return `${s.id} · ${s.status} · ${s.name ?? ""}${s.ip ? ` · ${s.ip}` : ""}${tags ? ` · ${tags}` : ""}`;
+        });
         return { content: [{ type: "text", text: lines.join("\n") }], details: { sandboxes: sbs } };
       } catch (err) {
         throw new Error(errmsg(err));
@@ -765,6 +788,36 @@ export function registerTools(pi: ExtensionAPI, getActive: () => ToolSandbox | n
           );
         }
         return txt("Ingress disabled.");
+      } catch (err) {
+        throw new Error(errmsg(err));
+      }
+    },
+  });
+
+  // --- Sandbox labels ---
+
+  pi.registerTool({
+    name: "sandbox_labels",
+    label: "Set Sandbox Labels",
+    description:
+      "Add or replace labels on a sandbox. Labels not named are kept. A label cannot be deleted; an empty value is stored as an empty string.",
+    promptSnippet: "Add or change sandbox labels",
+    parameters: Type.Object({
+      labels: Type.Record(Type.String(), Type.String(), {
+        description: "Key/value labels to merge into the sandbox's existing labels",
+      }),
+      sandbox_id: Type.Optional(Type.String({ description: "Sandbox ID (defaults to current)" })),
+    }),
+    async execute(_id, { labels, sandbox_id }, signal) {
+      if (signal?.aborted) throw new Error("aborted");
+      const targetId = sandbox_id ?? getActive()?.sandboxId;
+      if (!targetId) return txt("No sandbox active.");
+      // A bare `sandbox edit <id>` opens the CLI's interactive menu.
+      if (Object.keys(labels).length === 0) throw new Error("labels must name at least one key");
+      try {
+        await cli.editSandbox(pi, targetId, { labels });
+        const info = await cli.getSandbox(pi, targetId);
+        return txt(`Labels: ${formatLabels(info.labels) || "(none)"}`);
       } catch (err) {
         throw new Error(errmsg(err));
       }
@@ -1432,6 +1485,12 @@ export function registerTools(pi: ExtensionAPI, getActive: () => ToolSandbox | n
 
 function txt(text: string) {
   return { content: [{ type: "text" as const, text }], details: undefined };
+}
+
+function formatLabels(labels?: Record<string, string>): string {
+  return Object.entries(labels ?? {})
+    .map(([k, v]) => `${k}=${v}`)
+    .join(", ");
 }
 
 function errmsg(err: unknown): string {
