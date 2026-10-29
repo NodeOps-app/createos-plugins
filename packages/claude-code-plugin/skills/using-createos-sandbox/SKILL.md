@@ -241,6 +241,7 @@ Disk data lives in the user's own S3 account and region. `--path-style` is neede
 ## Lifecycle and cost
 
 - Ephemeral boxes self-destroy. The project box carries a 30-minute idle auto-pause as a backstop, so a forgotten box parks itself instead of billing overnight. Set it at create time with `cos up -P 22h` (max `24h`), or on a live box with `createos sandbox edit <id> --auto-pause 4h`, when a box is serving an exposed URL people will hit intermittently — otherwise the demo will look dead between visitors.
+- **Labels** tag a box with `KEY=VALUE` pairs so you can find it again: `createos sandbox create --label k=v`, `createos sandbox edit <id> --label k=v` (merges), `createos sandbox list --label k=v` (must match every pair). `cos` does not set them. Details in `references/lifecycle-and-images.md`.
 - Finish a live session with `cos pause` (keeping the warm state) or `cos down` (done for good). Don't leave a running box behind either way.
 - **Concurrency is limited** — external keys have been observed to allow 2 boxes running at once, with a daily creation cap. This is observed behaviour rather than published policy, so budget `cluster` and `fanout` against it and expect excess jobs to queue rather than fail.
 - If a shape is rejected, the error names the allowed list — pick from it, or run `createos sandbox shapes`.
@@ -256,5 +257,5 @@ Load these when the task actually needs the depth — the summaries above are en
 | `references/offload-and-egress.md`   | offload flag table, egress presets and how enforcement really behaves, fanout, upload excludes, heavy-build OOM/disk/bandwidth traps                                              |
 | `references/networking.md`           | choosing between tunnel/expose/cluster/vpn, cluster DNS names, expose gotchas, WireGuard setup                                                                                    |
 | `references/coding-agents.md`        | the five agent CLIs in `devbox:1`, per-agent provider wiring (OpenRouter / OpenAI-compatible / Anthropic-compatible), which agents can't be repointed, egress around an agent box |
-| `references/lifecycle-and-images.md` | pause/resume, auto-pause tuning, fork caveats, built-in rootfs vs custom templates, env vars, remote editor, self-terminating jobs, single-file transfer, measured timings        |
+| `references/lifecycle-and-images.md` | pause/resume, auto-pause tuning, labels, fork caveats, built-in rootfs vs custom templates, env vars, remote editor, self-terminating jobs, single-file transfer, measured timings        |
 | `references/docs.md`                 | every page of the live CreateOS Sandbox docs as a fetchable `.md` URL — REST API, SDKs, CLI reference, limits, concepts, integrations. Fetch only the page you need               |
