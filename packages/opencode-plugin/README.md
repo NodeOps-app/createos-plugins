@@ -121,7 +121,7 @@ All tools are in the `sandbox` namespace and enabled for Code Mode. Effective na
 
 | Group             | Names                                                                                                                    |
 | ----------------- | ------------------------------------------------------------------------------------------------------------------------ |
-| Session/lifecycle | `status`, `create`, `info`, `list`, `pause`, `resume`, `fork`, `destroy`                                                 |
+| Session/lifecycle | `status`, `create`, `info`, `list`, `labels`, `pause`, `resume`, `fork`, `destroy`                                       |
 | Execution         | `exec`, `run_code`, `offload`, `fanout`                                                                                  |
 | Files             | `read`, `write`, `edit`, `patch`, `glob`, `grep`, `push`, `pull`                                                         |
 | Processes         | `process_start`, `process_list`, `process_get`, `process_output`, `process_stop`, `process_input`, `process_close_stdin` |
@@ -182,3 +182,5 @@ bun pm pack
 Tests exercise native-tool routing, initialization races, persistence, cancellation, artifact retention, cleanup failures, and real guest file operations. They use fake CreateOS transport responses and require no sandbox credentials. Live provisioning and a real OpenCode server require a separate integration smoke test, including a model-driven call to exercise OpenCode's result validation. Routed tools return remote results as content and sandbox metadata; their host-only structured output declarations are removed because they describe local resources and shell jobs.
 
 Source modules: `plugin.ts` (V2 registration), `runtime.ts` (ownership), `cli.ts` (transport/processes), `tools.ts` (catalog/routing), `files.ts` + `guest.py` (file operations), `jobs.ts` (one-shot work), `sync.ts` (snapshots), `background.ts` (local transports), and `rpc.ts` (public contract).
+Safe-chain: Bypassing safe-chain for non-pip invocation: python3 -c import sys;s=sys.stdin.read();o='`list`, `pause`, `resume`, `fork`, `destroy`                                                 |';assert o in s;sys.stdout.write(s.replace(o,'`list`, `labels`, `pause`, `resume`, `fork`, `destroy`                                       |'))
+python3 -c import sys;s=sys.stdin.read();o='`list`, `pause`, `resume`, `fork`, `destroy`                                                 |';assert o in s;sys.stdout.write(s.replace(o,'`list`, `labels`, `pause`, `resume`, `fork`, `destroy`                                       |')) exited with status 0
