@@ -17,6 +17,19 @@ const string: Schema = { type: "string" };
 const boolean: Schema = { type: "boolean" };
 const number: Schema = { type: "integer", minimum: 1 };
 const strings: Schema = { type: "array", items: string };
+const labels: Schema = {
+  type: "object",
+  additionalProperties: string,
+  description: "Key/value labels (max 100 pairs, key ≤128 bytes, value ≤1024 bytes)",
+};
+// The CLI splits each --label at the first "=", so a key containing "=" would silently become a different label.
+function labelArgs(value: unknown): string[] {
+  if (value === undefined) return [];
+  return Object.entries(object(value)).flatMap(([key, v]) => {
+    if (key.includes("=")) throw new Error(`label key "${key}" must not contain "="`);
+    return ["--label", `${key}=${text(v, `labels.${key}`)}`];
+  });
+}
 const sid = { sandbox_id: string };
 export function schema(properties: Record<string, Schema>, required: string[] = []): Schema {
   return { type: "object", properties, required, additionalProperties: false };
@@ -75,7 +88,7 @@ export function registerTools(
   add(
     "create",
     "Create an independent sandbox. The returned sandbox persists until explicitly destroyed.",
-    { shape: string, rootfs: string, name: string, network: string },
+    { shape: string, rootfs: string, name: string, network: string, labels },
     [],
     async (args, _, signal) => {
       const id = await cli.create(
@@ -85,6 +98,7 @@ export function registerTools(
           rootfs: text(args.rootfs, "rootfs", runtime.config.rootfs),
           name: args.name === undefined ? undefined : identifier(args.name),
           network: args.network === undefined ? runtime.config.network : identifier(args.network),
+          labels: labelArgs(args.labels),
         },
         signal,
       );
@@ -116,8 +130,30 @@ export function registerTools(
       async (args, context, signal) =>
         cli.json(["sandbox", verb, await target(args, context, signal)], { signal }),
     );
+  add(
+    "list",
+    "List CreateOS sandboxes, optionally only those matching every given label.",
+    { labels },
+    [],
+    // The CLI prints `null` when nothing matches.
+    async (args, _, signal) =>
+      (await cli.json(["sandbox", "list", ...labelArgs(args.labels)], { signal })) ?? [],
+  );
+  add(
+    "labels",
+    "Add or replace labels on a sandbox. Labels not named are kept. A label cannot be deleted; an empty value is stored as an empty string. Omit sandbox_id to use the session sandbox.",
+    { ...sid, labels },
+    ["labels"],
+    async (args, context, signal) => {
+      const flags = labelArgs(args.labels);
+      // A bare `sandbox edit <id>` opens the CLI's interactive menu.
+      if (flags.length === 0) throw new Error("labels must name at least one key");
+      const id = await target(args, context, signal);
+      await cli.checked(["sandbox", "edit", id, ...flags], { signal });
+      return { labels: record(await cli.json(["sandbox", "get", id], { signal })).labels ?? {} };
+    },
+  );
   for (const [name, verb] of [
-    ["list", "list"],
     ["shapes", "shapes"],
     ["images", "rootfs"],
   ]) {

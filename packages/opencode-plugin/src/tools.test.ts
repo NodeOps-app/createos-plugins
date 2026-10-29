@@ -183,7 +183,31 @@ test("catalog includes lifecycle, files, jobs, transports and managed processes"
     "sandbox_disk_create",
   ])
     expect(tools.has(name)).toBe(true);
-  expect(tools.size).toBe(54);
+  expect(tools.size).toBe(55);
+});
+test("labels merges via edit, rejects keys with '=' and empty input; list maps null to []", async () => {
+  const calls: string[][] = [];
+  const cli = new CLI(async (args) => {
+    calls.push(args);
+    const stdout = args.includes("get") ? '{"labels":{"team":"a","env":"prod"}}' : "null";
+    return { stdout, stderr: "", code: 0, truncated: false };
+  });
+  const tools = new Map<string, Info>();
+  const runtime = new Runtime(cli, configure({}, {}), "/project", {} as Plugin.Context["storage"]);
+  registerTools(editorFor(tools), runtime, new Files(cli), new Background());
+  const run = (name: string, input: object) => tools.get(name)!.execute(input, context);
+
+  const result = await run("sandbox_labels", { sandbox_id: "sb-1", labels: { env: "prod" } });
+  expect(calls[0]).toEqual(["sandbox", "edit", "sb-1", "--label", "env=prod"]);
+  expect(JSON.parse(String((result as { content: unknown }).content))).toEqual({
+    labels: { team: "a", env: "prod" },
+  });
+  await expect(run("sandbox_labels", { sandbox_id: "sb-1", labels: { "a=b": "c" } })).rejects.toThrow(
+    "=",
+  );
+  await expect(run("sandbox_labels", { sandbox_id: "sb-1", labels: {} })).rejects.toThrow("at least one");
+  const listed = await run("sandbox_list", { labels: { team: "none" } });
+  expect(JSON.parse(String((listed as { content: unknown }).content))).toEqual([]);
 });
 test("V2 setup registers tools, commands, a context hook and RPC without provisioning", async () => {
   const tools = new Map<string, Info>();
