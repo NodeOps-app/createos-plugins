@@ -15,7 +15,7 @@
  * file drops into any TypeScript plugin.
  */
 
-import { execSync, spawnSync } from "node:child_process";
+import { spawnSync } from "node:child_process";
 import { existsSync, readFileSync, writeFileSync } from "node:fs";
 import { homedir } from "node:os";
 
@@ -94,22 +94,19 @@ function shq(arg: string): string {
  * live sandbox: remote `tar -c no-such-dir` exits 2, receiving tar exits 0.
  */
 export function execShell(cmd: string, timeoutMs = 120_000): ExecResult {
-  try {
-    const stdout = execSync(`set -o pipefail; ${cmd}`, {
-      shell: "/bin/bash",
-      encoding: "utf-8",
-      timeout: timeoutMs,
-      maxBuffer: 64 * 1024 * 1024,
-      stdio: ["pipe", "pipe", "pipe"],
-    });
-    return { code: 0, stdout, stderr: "" };
-  } catch (err: any) {
-    return {
-      code: err.status ?? 1,
-      stdout: err.stdout?.toString() ?? "",
-      stderr: err.stderr?.toString() ?? "",
-    };
-  }
+  // Node may supply a socket for stdin. Bash can interpret that as a remote
+  // shell and load ~/.bashrc even with -c, changing PATH and CLI behaviour.
+  const result = spawnSync("/bin/bash", ["--noprofile", "--norc", "-c", `set -o pipefail; ${cmd}`], {
+    encoding: "utf-8",
+    timeout: timeoutMs,
+    maxBuffer: 64 * 1024 * 1024,
+    stdio: ["pipe", "pipe", "pipe"],
+  });
+  return {
+    code: result.status ?? 1,
+    stdout: result.stdout ?? "",
+    stderr: result.status === 0 ? "" : result.stderr || result.error?.message || "",
+  };
 }
 
 function cliCmd(args: string[]): string {

@@ -41,20 +41,23 @@ Dependencies are meant to be built _inside_ the box, not shipped into it — tha
 
 ## Egress: how the firewall actually behaves
 
-**The default is unrestricted.** A fresh box can reach any host on the internet. `cos` prints a one-line UNRESTRICTED notice so this is never silent. Restricting is opt-in: `-p <preset>`, `-e <domain>`, or both.
+**The default is unrestricted.** A fresh box can reach any host on the internet. `cos` prints a one-line UNRESTRICTED notice so this is never silent. Use IP/CIDR rules for enforced restrictions. Hostname presets are accepted configuration, not enforced restrictions.
 
 The rule grammar is allow-list only — there is no deny token, so every destination a job needs must be enumerated. Rules can be `host`, `host:port`, `*.host`, `ip`, `ip:port`, `cidr`, `cidr:port`, or `*` (which means allow everything).
 
 Enforcement is not uniform, and the difference matters when the threat model is exfiltration:
 
 - **IP and CIDR rules take effect immediately** and cannot be bypassed from inside the box.
-- **Domain rules take roughly 30 seconds to apply** after being set, and they are a strong control for HTTPS traffic but a weak one for cleartext HTTP.
+- **Hostname rules are not enforced.** `host`, `host:port`, and `*.host` are accepted, stored, and returned by the API, but ignored during enforcement. Do not claim that a hostname allow-list restricts HTTPS or HTTP traffic.
 
-So: a domain allow-list is the right tool for "this build should only reach pypi and crates.io." For an adversarial workload where blocking exfiltration is the actual goal, prefer IP/CIDR rules, and expect the 30-second window after any domain-rule change.
+For an adversarial workload, use IP/CIDR rules or deny outbound access with `cos exec -N`. For a multi-file offload, `-e 192.0.2.1/32` applies the same deny-all IP rule. Do not resolve registry hostnames to IPs as a workaround: DNS rotates, and CDN addresses are shared. This matches the verified control-plane behavior recorded in the repository root `CLAUDE.md`; re-check the control plane before changing these guarantees.
 
 DNS keeps resolving even for blocked destinations — a blocked connection fails as a connection error (for example `curl` exit 35), not as a name-resolution failure. Debugging a restricted build by checking whether DNS works will mislead you.
 
 ## Egress presets
+
+These presets expand to hostname rules. They do not enforce outbound restrictions
+on the current control plane. Do not use them as a security boundary.
 
 | Preset       | Opens                                                                                             |
 | ------------ | ------------------------------------------------------------------------------------------------- |

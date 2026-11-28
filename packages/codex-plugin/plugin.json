@@ -1,0 +1,26 @@
+{
+  "$schema": "https://agent-plugins.org/schemas/1.0.0/plugin.schema.json",
+  "name": "createos-sandbox-codex",
+  "version": "0.3.0",
+  "description": "Run code in disposable CreateOS sandboxes, track durable jobs, inspect logs, and retrieve artifacts.",
+  "author": { "name": "NodeOps", "url": "https://createos.sh" },
+  "homepage": "https://createos.sh",
+  "repository": "https://github.com/NodeOps-app/createos-plugin",
+  "license": "Apache-2.0",
+  "keywords": ["createos", "sandbox", "offload", "remote-exec", "jobs", "mcp"],
+  "extensions": {
+    "com.openai": {
+      "hooks": "./hooks/hooks.json",
+      "interface": {
+        "displayName": "CreateOS Sandbox",
+        "shortDescription": "Run remote jobs, inspect logs, and retrieve artifacts",
+        "longDescription": "Offload local code to disposable CreateOS sandboxes. Track jobs across conversations, inspect logs and exit codes, and download output files. Includes the cos driver for advanced sandbox workflows.",
+        "developerName": "NodeOps",
+        "category": "Developer Tools",
+        "capabilities": ["Read", "Write", "Interactive"],
+        "websiteURL": "https://createos.sh",
+        "defaultPrompt": ["Show my CreateOS sandbox jobs", "Run this project's tests in a CreateOS sandbox"]
+      }
+    }
+  }
+}

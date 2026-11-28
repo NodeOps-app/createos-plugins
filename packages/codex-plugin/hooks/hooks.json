@@ -1,0 +1,27 @@
+{
+  "hooks": {
+    "SessionStart": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "bash \"${PLUGIN_ROOT}/scripts/session-start.sh\"",
+            "statusMessage": "Checking CreateOS Sandbox setup"
+          }
+        ]
+      }
+    ],
+    "PreToolUse": [
+      {
+        "matcher": "Bash",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "bash \"${PLUGIN_ROOT}/scripts/offload-hint.sh\"",
+            "statusMessage": "Checking whether to offload"
+          }
+        ]
+      }
+    ]
+  }
+}

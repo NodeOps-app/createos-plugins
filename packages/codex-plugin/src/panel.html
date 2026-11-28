@@ -1,0 +1,45 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>CreateOS Sandbox jobs</title>
+  <style>
+    :root { color-scheme: light dark; font: 14px/1.5 system-ui, sans-serif; }
+    * { box-sizing: border-box; }
+    body { margin: 0; padding: 20px; background: light-dark(#fafafa, #171717); color: light-dark(#202020, #ececec); }
+    header { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
+    h1 { font-size: 18px; margin: 0; } h2 { font-size: 15px; margin: 0 0 12px; }
+    button { font: inherit; padding: 7px 12px; border: 1px solid light-dark(#ddd, #444); border-radius: 8px; background: light-dark(#fff, #252525); color: inherit; cursor: pointer; }
+    button:hover, button[aria-pressed="true"] { border-color: #4b8bfa; }
+    button:disabled { opacity: .5; cursor: default; }
+    #error { color: light-dark(#9a270f, #ffae9a); } #error:empty { display: none; }
+    #jobs { display: flex; flex-wrap: wrap; gap: 8px; margin: 18px 0; }
+    #jobs button { text-align: left; max-width: 260px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    #detail { padding: 16px; border: 1px solid light-dark(#ddd, #3a3a3a); border-radius: 12px; }
+    #detail[hidden] { display: none; }
+    #command { white-space: pre-wrap; overflow-wrap: anywhere; font: 13px ui-monospace, monospace; }
+    #meta { opacity: .7; font-size: 12px; overflow-wrap: anywhere; }
+    #warnings { color: light-dark(#8a4d00, #ffce80); white-space: pre-wrap; }
+    #log { margin: 16px 0; padding: 14px; background: light-dark(#f0f0f0, #101010); border-radius: 8px; white-space: pre-wrap; overflow-wrap: anywhere; max-height: 50vh; overflow-y: auto; font: 12px/1.6 ui-monospace, monospace; }
+    #artifacts { display: flex; flex-wrap: wrap; gap: 8px; }
+    #empty { opacity: .65; margin: 24px 0; }
+    @media (max-width: 420px) { body { padding: 12px; } #jobs button { max-width: 100%; } }
+  </style>
+</head>
+<body>
+  <header><h1>CreateOS Sandbox</h1><button id="refresh" type="button">Refresh</button></header>
+  <p id="error" role="alert"></p>
+  <nav id="jobs" aria-label="Sandbox jobs"></nav>
+  <p id="empty">Loading jobs…</p>
+  <section id="detail" aria-label="Selected job" hidden>
+    <h2 id="status"></h2>
+    <p id="command"></p>
+    <p id="meta"></p>
+    <p id="warnings" role="status"></p>
+    <pre id="log" aria-label="Job logs"></pre>
+    <div id="artifacts" aria-label="Download artifacts"></div>
+  </section>
+  <script type="module">/* PANEL_SCRIPT */</script>
+</body>
+</html>
